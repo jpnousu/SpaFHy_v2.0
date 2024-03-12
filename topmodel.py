@@ -47,22 +47,22 @@ class Topmodel_Homogenous():
         # importing grids from parameters
         cmask = pp['cmask']
         cmask[np.isfinite(cmask)] = 1.0
+        
         flowacc = pp['flowacc']
         slope = pp['slope']
         twi = pp['twi']
-        
+
         # importing other parameters
         dxy  = pp['dxy'] # grid size
         self.M = pp['m'] # effective soil depth [m]
         self.dt = float(pp['dt']) # timestep 
         self.To = pp['ko']*self.dt # transmissivity at saturation
-
+        
         # area of a given cell
         self.CellArea = dxy**2
-        self.CatchmentArea = np.size(cmask[cmask == 1])*self.CellArea
+        self.CatchmentArea = np.size(cmask[np.isfinite(cmask)])*self.CellArea
         self.qr = np.full_like(cmask, 0.0)
         
-
         """
         local and catchment average hydrologic similarity indices (xi=twi, X).
         Set xi > twi_cutoff equal to cutoff value to remove tail of twi-distribution.
@@ -104,7 +104,6 @@ class Topmodel_Homogenous():
         s = self.local_s(S_initial)
         s[s < 0] = 0.0
         self.S = np.nanmean(s)
-
 
     def local_s(self, Smean):
         """
@@ -165,7 +164,6 @@ class Topmodel_Homogenous():
         dS = (So - self.S)
         dF = R - Qb - Qr
         mbe = dS - dF
-
 
         results = {
                 'baseflow': Qb * 1e3,  # [mm d-1]

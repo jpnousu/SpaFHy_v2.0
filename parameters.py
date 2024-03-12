@@ -11,10 +11,10 @@ def parameters(folder=''):
 
     pgen = {'description': 'final_run',  # description written in result file
             'simtype': 'TOP', # 1D, TOP, 2D,
-            'start_date': '2018-01-01',  # '2011-01-01', for tests: '2020-01-01'
+            'start_date': '2019-01-01',  # '2011-01-01', for tests: '2020-01-01'
             'end_date': '2021-07-01', # 2021-09-01,
             #'spinup_file': r'F:\SpaFHy_2D_2021/testcase_input_202304051037_spinup.nc',
-            'spinup_end': '2018-12-31',  # '2013-09-01', for tests: '2020-09-01' results after this are saved in result file
+            'spinup_end': '2019-12-31',  # '2013-09-01', for tests: '2020-09-01' results after this are saved in result file
             'dt': 86400.0,
             'spatial_cpy': True,  # if False uses parameters from cpy['state']
             # else needs cf.dat, hc.dat, LAI_decid.dat, LAI_spruce.dat, LAI_pine.dat, (cmask.dat)
@@ -25,12 +25,12 @@ def parameters(folder=''):
             'spatial_forcing': False,  # if False uses forcing from forcing file with pgen['forcing_id'] and cpy['loc']
             'spatial_radiation_file': None, # if spatial radiation file, otherwise None
             # else needs Ncoord.dat, Ecoord.dat, forcing_id.dat
-            'gis_folder': str(pathlib.Path(folder+r'/hyytiala')),
+            'gis_folder': str(pathlib.Path(folder+r'/hyytiala_16')),
             'forcing_file': str(pathlib.Path(folder+r'/forcing/HYYTIALA_FORCING_1980_2021.csv')),
             'forcing_id': 0,  # used if spatial_forcing == False
             'ncf_file': folder + '_' + time.strftime('%Y%m%d%H%M') + r'.nc',  # added timestamp to result file name to avoid saving problem when running repeatedly
-            'mask_streams': False,
-            'results_folder': str(pathlib.Path(folder+r'/results')),
+            'mask_streams': True,
+            'results_folder': r'/Users/jpnousu/SpaFHy_v2.0/results',
             'save_interval': 366, # interval for writing results to file (decreases need for memory during computation)
             'variables':[ # list of output variables (rows can be commented away if not all variables are of interest)
                     ['parameters_lai_conif', 'leaf area index of conifers [m2 m-2]'],
@@ -47,6 +47,7 @@ def parameters(folder=''):
                     ['parameters_lat', 'latitude [deg]'],
                     ['parameters_lon', 'longitude [deg]'],
                     ['parameters_ditches', 'ditches'],
+                    ['parameters_lakes', 'lakes'],
                     ['parameters_cmask', 'cmask'],
                     ['parameters_sitetype', 'sitetype'],
                     ['parameters_twi', 'twi'],
@@ -64,7 +65,7 @@ def parameters(folder=''):
                     #['bucket_potential_infiltration', 'potential infiltration [mm d-1]'],
                     ['bucket_surface_runoff', 'surface runoff [mm d-1]'],
                     ['bucket_evaporation', 'evaporation from soil surface [mm d-1]'],
-                    #['bucket_drainage', 'drainage from root layer [mm d-1]'],
+                    ['bucket_drainage', 'drainage from root layer [mm d-1]'],
                     #['bucket_water_storage', 'bucket water storage (top and root) [mm d-1]'],
                     #['bucket_water_storage_top', 'bucket water storage (top) [mm d-1]'],
                     #['bucket_water_storage_root', 'bucket water storage (root) [mm d-1]'],
@@ -94,12 +95,12 @@ def parameters(folder=''):
                     ['top_baseflow', 'topmodel baseflow [mm d-1]'],
                     ['top_water_closure', 'topmodel water balance error [mm d-1]'],
                     ['top_returnflow', 'topmodel returnflow [mm d-1]'],
-                    #['top_local_returnflow', 'topmodel local returnflow [mm d-1]'],
-                    #['top_drainage_in', 'topmodel inflow from drainage [mm d-1]'],
-                    #['top_saturation_deficit', 'topmodel saturation deficit [m]'],
-                    #['top_local_saturation_deficit', 'topmodel local saturation deficit [mm]'],
-                    #['top_saturated_area', 'topmodel saturated area [-]'],
-                    #['top_storage_change', 'topmodel_water_storage_change [mm d-1]']
+                    ['top_local_returnflow', 'topmodel local returnflow [mm d-1]'],
+                    ['top_drainage_in', 'topmodel inflow from drainage [mm d-1]'],
+                    ['top_saturation_deficit', 'topmodel saturation deficit [m]'],
+                    ['top_local_saturation_deficit', 'topmodel local saturation deficit [mm]'],
+                    ['top_saturated_area', 'topmodel saturated area [-]'],
+                    ['top_storage_change', 'topmodel_water_storage_change [mm d-1]']
                     ]
              }
 
@@ -237,7 +238,7 @@ def ptopmodel():
     parameters of topmodel submodel
     """
     ptopmodel = {'dt': 86400.0, # timestep (s)
-            'm': 0.025, # 0.025 calibrated by Samuli, scaling depth (m), testin 0.01
+            'm': 0.025, # 0.025 calibrated by Samuli for Pallas, scaling depth (m), testin 0.01
             'ko': 0.001, # transmissivity parameter (ms-1)
             'twi_cutoff': 97.5,  # cutoff of cumulative twi distribution (%)
             'so': 0.05 # initial saturation deficit (m)

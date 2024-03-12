@@ -21,6 +21,7 @@ Modified by khaahti, jpnousu
 import numpy as np
 import configparser
 from netCDF4 import Dataset
+import matplotlib.pyplot as plt
 eps = np.finfo(float).eps
 
 class CanopyGrid():
@@ -46,7 +47,6 @@ class CanopyGrid():
         cmask = state['hc'].copy()
         cmask[np.isfinite(cmask)] = 1.0
         self.cmask = cmask
-
         self.latitude = cpara['loc']['lat'] * cmask
         self.longitude = cpara['loc']['lon']
 

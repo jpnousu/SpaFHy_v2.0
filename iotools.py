@@ -38,9 +38,9 @@ def read_bu_gisdata(fpath, mask_streams=True, plotgrids=False):
     rootsoil, _, _, cellsize, _ = read_AsciiGrid(os.path.join(fpath, 'site_type_combined.asc'))
     
     # catchment mask if available
-    if os.path.isfile(os.path.join(fpath, 'catchment_mask.asc')):
-        cmask, info, _, _, _ = read_AsciiGrid(os.path.join(fpath, 'catchment_mask.asc'))
-    else:
+    try:
+        cmask, info, _, _, _ = read_AsciiGrid(os.path.join(fpath, 'catchment_mask_d8.asc'))
+    except:
         cmask = np.ones(np.shape(rootsoil))
 
     # keeping the original cmask as it is and creating a binary copy
@@ -54,15 +54,26 @@ def read_bu_gisdata(fpath, mask_streams=True, plotgrids=False):
         ditches = np.where(ditches == 0, np.nan, -1)
     except:
         print('*** No ditch file ***')
-        ditches = np.full_like(soilclass, 0.0)
+        ditches = np.full_like(orgsoil, 0.0)
     ditch_mask = np.where(ditches < -eps, np.nan, 1)
 
+    # lakes if available
+    try:
+        lakes, _, _, _, _ = read_AsciiGrid(os.path.join(fpath, 'lake_mask.asc')) # ditches.dat
+        lakes[lakes == np.nan] = 0.0
+        lakes = np.where(lakes == 0, np.nan, -1)
+    except:
+        print('*** No lakes file ***')
+        lakes = np.full_like(orgsoil, 0.0)
+    lake_mask = np.where(lakes < -eps, np.nan, 1)
+    
     # dict of all rasters
     gis = {'cmask': cmask,
            'cmask_bi': cmask_bi,
            'orgsoil': orgsoil,
            'rootsoil': rootsoil,
-           'ditches': ditches,
+           'ditches': ditches,           
+           'lakes': lakes,           
            }
 
     xllcorner = int(re.findall(r'\d+', info[2])[0])
@@ -71,7 +82,7 @@ def read_bu_gisdata(fpath, mask_streams=True, plotgrids=False):
     for key in gis.keys():
         if (key != 'ditches') & (key != 'cmask'):
             if mask_streams == True:
-                gis[key] *= cmask_bi * ditch_mask # for 1D and TOP run * ditch_mask, for 2D no!
+                gis[key] *= cmask_bi * ditch_mask * lake_mask # for 1D and TOP run * ditch_mask, for 2D no!
             elif mask_streams == False:
                 gis[key] *= cmask_bi                
         elif key == 'ditches':
@@ -113,9 +124,9 @@ def read_cpy_gisdata(fpath, mask_streams=True, plotgrids=False):
     cf, _, _, _, _ = read_AsciiGrid(os.path.join(fpath, 'canopy_fraction.asc'))
     
     # catchment mask if available
-    if os.path.isfile(os.path.join(fpath, 'catchment_mask.asc')):
-        cmask, _, _, _, _ = read_AsciiGrid(os.path.join(fpath, 'catchment_mask.asc'))
-    else:
+    try:
+        cmask, _, _, _, _ = read_AsciiGrid(os.path.join(fpath, 'catchment_mask_d8.asc'))
+    except:
         cmask = np.ones(np.shape(hc))
     
     # keeping the original cmask as it is and creating a binary copy
@@ -147,9 +158,19 @@ def read_cpy_gisdata(fpath, mask_streams=True, plotgrids=False):
         ditches = np.where(ditches == 0, np.nan, -1)
     except:
         print('*** No ditch file ***')
-        ditches = np.full_like(soilclass, 0.0)
+        ditches = np.full_like(hc, 0.0)
     ditch_mask = np.where(ditches < -eps, np.nan, 1)
 
+    # lakes if available
+    try:
+        lakes, _, _, _, _ = read_AsciiGrid(os.path.join(fpath, 'lake_mask.asc')) # ditches.dat
+        lakes[lakes == np.nan] = 0.0
+        lakes = np.where(lakes == 0, np.nan, -1)
+    except:
+        print('*** No lakes file ***')
+        lakes = np.full_like(hc, 0.0)
+    lake_mask = np.where(lakes < -eps, np.nan, 1)
+    
     # dict of all rasters
     gis = {'cmask': cmask,
            'cmask_bi': cmask_bi,
@@ -159,16 +180,18 @@ def read_cpy_gisdata(fpath, mask_streams=True, plotgrids=False):
            'LAI_grass': LAI_grass,
            'hc': hc, 
            'cf': cf, 
-           'ditches': ditches}
+           'ditches': ditches,
+           'lakes': lakes,
+          }
 
     for key in gis.keys():
-        if (key != 'ditches') & (key != 'cmask'):
+        if (key != 'ditches') & (key != 'cmask') & (key != 'cmask_bi') & (key != 'lakes'):
             if mask_streams == True:
-                gis[key] *= cmask_bi * ditch_mask
+                gis[key] *= cmask_bi * ditch_mask * lake_mask
             elif mask_streams == False:
                 gis[key] *= cmask_bi
                 
-        elif key == 'ditches':
+        elif (key == 'ditches') | (key == 'lakes'):
             gis[key] = np.where(gis[key] == -1, -1, np.nan)
 
     if plotgrids is True:
@@ -202,9 +225,9 @@ def read_ds_gisdata(fpath, mask_streams=False, plotgrids=False):
     deepsoil, _, _, cellsize, _ = read_AsciiGrid(os.path.join(fpath, 'top_soil.asc'))
     
     # catchment mask if available
-    if os.path.isfile(os.path.join(fpath, 'catchment_mask.asc')):
-        cmask, info, _, _, _ = read_AsciiGrid(os.path.join(fpath, 'catchment_mask.asc'))
-    else:
+    try:
+        cmask, info, _, _, _ = read_AsciiGrid(os.path.join(fpath, 'catchment_mask_d8.asc'))
+    except:
         cmask = np.ones(np.shape(deepsoil))
 
     # keeping the original cmask as it is and creating a binary copy
@@ -225,14 +248,27 @@ def read_ds_gisdata(fpath, mask_streams=False, plotgrids=False):
         ditches = np.where(ditches == 0, np.nan, -1)
     except:
         print('*** No ditch file ***')
-        ditches = np.full_like(soilclass, 0.0)
+        ditches = np.full_like(deepsoil, 0.0)
     ditch_mask = np.where(ditches < -eps, np.nan, 1)
+
+    # lakes if available
+    try:
+        lakes, _, _, _, _ = read_AsciiGrid(os.path.join(fpath, 'lake_mask.asc')) # ditches.dat
+        lakes[lakes == np.nan] = 0.0
+        lakes = np.where(lakes == 0, np.nan, -1)
+    except:
+        print('*** No lakes file ***')
+        lakes = np.full_like(deepsoil, 0.0)
+    lake_mask = np.where(lakes < -eps, np.nan, 1)
+
+    ditches[lakes == -1] = -1
     
     # dict of all rasters
     gis = {'cmask': cmask,
            'cmask_bi': cmask_bi,           
            'deepsoil': deepsoil,
            'ditches': ditches,
+           'lakes': lakes,           
            'dem': dem,
            'bedrock': bedrock,
            }
@@ -241,13 +277,13 @@ def read_ds_gisdata(fpath, mask_streams=False, plotgrids=False):
     yllcorner = int(re.findall(r'\d+', info[3])[0])
 
     for key in gis.keys():
-        if (key != 'ditches') & (key != 'cmask'):
+        if (key != 'ditches') & (key != 'cmask') & (key != 'cmask_bi') & (key != 'lakes'):
             if mask_streams == True:
-                gis[key] *= cmask_bi * ditch_mask # for 1D and TOP run * ditch_mask, for 2D no!
+                gis[key] *= cmask_bi * ditch_mask * lake_mask # for 1D and TOP run * ditch_mask, for 2D no!
             elif mask_streams == False:
                 gis[key] *= cmask_bi
                 
-        elif key == 'ditches':
+        elif (key == 'ditches') | (key == 'lakes'):
             gis[key] = np.where(gis[key] == -1, -1, np.nan)
 
     if plotgrids is True:
@@ -278,9 +314,9 @@ def read_top_gisdata(fpath, mask_streams=True, plotgrids=False):
     fpath = os.path.join(workdir, fpath)
     
     # catchment mask if available
-    if os.path.isfile(os.path.join(fpath, 'catchment_mask.asc')):
-        cmask, _, _, _, _ = read_AsciiGrid(os.path.join(fpath, 'catchment_mask.asc'))
-    else:
+    try:
+        cmask, _, _, _, _ = read_AsciiGrid(os.path.join(fpath, 'catchment_mask_d8.asc'))
+    except:
         cmask = np.ones(np.shape(hc))
     
     # keeping the original cmask as it is and creating a binary copy
@@ -288,15 +324,14 @@ def read_top_gisdata(fpath, mask_streams=True, plotgrids=False):
     cmask_bi[np.isfinite(cmask_bi)] = 1
     
     # flow accumulation
-    flowacc, _, _, cellsize, _ = read_AsciiGrid(os.path.join(fpath, 'flow_accumulation.asc'))
+    flowacc, _, _, cellsize, _ = read_AsciiGrid(os.path.join(fpath, 'flow_accumulation_d8.asc'))
 
     # slope
     slope, _, _, _, _ = read_AsciiGrid(os.path.join(fpath, 'slope.asc'))
 
     # twi
-    twi, _, _, _, _ = read_AsciiGrid(os.path.join(fpath, 'twi.asc'))
+    twi, _, _, _, _ = read_AsciiGrid(os.path.join(fpath, 'twi_d8.asc'))
 
-    # ditches
     # ditches
     try:
         ditches, _, _, _, _ = read_AsciiGrid(os.path.join(fpath, 'stream_mask.asc')) # ditches.dat
@@ -306,6 +341,16 @@ def read_top_gisdata(fpath, mask_streams=True, plotgrids=False):
         print('*** No ditch file ***')
         ditches = np.full_like(soilclass, 0.0)
     ditch_mask = np.where(ditches < -eps, np.nan, 1)
+
+    # lakes if available
+    try:
+        lakes, _, _, _, _ = read_AsciiGrid(os.path.join(fpath, 'lake_mask.asc')) # ditches.dat
+        lakes[lakes == np.nan] = 0.0
+        lakes = np.where(lakes == 0, np.nan, -1)
+    except:
+        print('*** No lakes file ***')
+        lakes = np.full_like(deepsoil, 0.0)
+    lake_mask = np.where(lakes < -eps, np.nan, 1)
     
     # dict of all rasters
     gis = {'cmask': cmask,
@@ -313,17 +358,18 @@ def read_top_gisdata(fpath, mask_streams=True, plotgrids=False):
            'flowacc': flowacc,
            'slope': slope,
            'twi': twi,
-           'ditches': ditches
+           'ditches': ditches,
+           'lakes': lakes           
            }
 
     for key in gis.keys():
-        if (key != 'ditches') & (key != 'cmask'):
+        if (key != 'ditches') & (key != 'cmask') & (key != 'cmask_bi') & (key != 'lakes'):
             if mask_streams == True:
-                gis[key] *= cmask_bi * ditch_mask
+                gis[key] *= cmask_bi * ditch_mask * lake_mask
             elif mask_streams == False:
                 gis[key] *= cmask_bi
                 
-        elif key == 'ditches':
+        elif (key == 'ditches') | (key == 'lakes'):
             gis[key] = np.where(gis[key] == -1, -1, np.nan)
 
     if plotgrids is True:
@@ -398,6 +444,7 @@ def preprocess_budata(psp, orgp, rootp, gisdata, spatial=True):
         data['org_id'] = gisdata['orgsoil']
         data['root_id'] = gisdata['rootsoil']
         data['ditches'] = gisdata['ditches']
+        data['lakes'] = gisdata['lakes']
 
     root_ids = []
     for key, value in rootp.items():
@@ -480,6 +527,7 @@ def preprocess_dsdata(pspd, deepp, gisdata, spatial=True):
         data['elevation'] = gisdata['dem']
         data['bedrock'] = gisdata['bedrock']        
         data['ditches'] = gisdata['ditches']
+        data['lakes'] = gisdata['lakes']
 
     deep_ids = []
     for key, value in deepp.items():
@@ -570,9 +618,10 @@ def preprocess_topdata(ptopmodel, gisdata, spatial=True):
     ptopmodel['slope'] = gisdata['slope']
     ptopmodel['flowacc'] = gisdata['flowacc']
     ptopmodel['twi'] = gisdata['twi']
-    ptopmodel['cmask'] = gisdata['cmask']
+    ptopmodel['cmask'] = gisdata['cmask_bi']
     ptopmodel['dxy'] = gisdata['dxy']
     ptopmodel['ditches'] = gisdata['ditches']
+    ptopmodel['lakes'] = gisdata['lakes']
     if {'lat','lon'}.issubset(gisdata.keys()):
         ptopmodel['loc']['lat'] = gisdata['lat']
         ptopmodel['loc']['lon'] = gisdata['lon']
