@@ -86,7 +86,7 @@ class SpaFHy():
         
         
         # flatten=True omits cells outside catchment
-        
+        '''
         if flatten:
             ix = np.where(np.isfinite(cmask))
     
@@ -97,7 +97,7 @@ class SpaFHy():
                 pbu['state'][key] = pbu['state'][key][ix].copy()
                 
             self.ix = ix  # indices to locate back to 2d grid
-        
+        '''
 
         """--- initialize BucketGrid ---"""
         self.bu = BucketGrid(pbu, pgen['org_drain'])

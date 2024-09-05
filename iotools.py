@@ -13,14 +13,28 @@ from soilprofile2D import gwl_Wsto
 from koordinaattimuunnos import koordTG
 from topmodel import twi as twicalc
 import re
-from parameters_krycklan import parameters, auxiliary_grids, ptopmodel
+import importlib
 
 eps = np.finfo(float).eps  # machine epsilon
 workdir = os.getcwd()
 
-pgen, pcpy, pbu, pspd = parameters(folder='testcase_input')
-ptop = ptopmodel()
-aux = auxiliary_grids()
+# Global variables to store the imported parameters
+pgen, pcpy, pbu, pspd, ptop, aux = None, None, None, None, None, None
+
+def initialize_parameters(catchment, folder):
+    """
+    Dynamically import parameters module based on the catchment and initialize global variables.
+    """
+    global pgen, pcpy, pbu, pspd, ptop, aux
+
+    # Dynamically import the correct parameters module
+    parameters_module = importlib.import_module(f'parameters_{catchment}')
+
+    # Initialize the parameters
+    pgen, pcpy, pbu, pspd = parameters_module.parameters(folder=folder)
+    ptop = parameters_module.ptopmodel()
+    aux = parameters_module.auxiliary_grids()
+
 
 def read_bu_gisdata(fpath, spatial_pbu, mask=None, plotgrids=False):    
     """
@@ -330,12 +344,17 @@ def preprocess_budata(pbu, spatial_pbu, orgp, rootp, gisdata, spatial=True):
     spatial_data = spatial_pbu.copy()
     gridshape = np.ones(shape=gisdata['org_id'].shape) # replace org_id with something generic?
 
+    #  Create a mask where gisdata['org_id'] is finite (not NaN)
+    mask = np.isfinite(gisdata['org_id'])
+
     for key in data:
         if spatial_data[key] == True:
             data[key] = gisdata[key]
         if spatial_data[key] == False:
             uni_value = data[key]
-            data[key] = np.full_like(gridshape, uni_value)
+            data[key] = np.full_like(gridshape, np.nan)
+            data[key][mask] = uni_value  # Assign uni_value only where the mask is True
+
 
     root_ids = []
     for key, value in rootp.items():
@@ -375,6 +394,7 @@ def preprocess_budata(pbu, spatial_pbu, orgp, rootp, gisdata, spatial=True):
             data['org_rw'][yx] = value['org_rw']
             data['org_ksat'][yx] = value['org_ksat']
             data['org_beta'][yx] = value['org_beta']
+
 
     if spatial == True:
         for key, value in rootp.items():
@@ -481,15 +501,18 @@ def preprocess_cpydata(pcpy, spatial_pcpy, gisdata, spatial=True):
     """
     # inputs for CanopyGrid initialization: update pcpy using spatial data
     data = pcpy['state'].copy()
+    
     spatial_data = spatial_pcpy.copy()
     gridshape = np.ones(shape=gisdata['LAI_conif'].shape)
-
+    mask = np.where(np.isfinite(gisdata['LAI_conif']), 1.0, np.nan)
+    
     for key in data:
         if spatial_data[key] == True:
             data[key] = gisdata[key]
         if spatial_data[key] == False:
             uni_value = data[key]
             data[key] = np.full_like(gridshape, uni_value)
+        data[key] = data[key] * mask
 
     pcpy['state'] = data
 
@@ -915,6 +938,8 @@ def write_ncf(results, ncf, steps=None):
                 else:
                     ncf[key][steps[0]:steps[1],:,:] = results[key][0:steps[1]-steps[0],:,:]
             elif len(ncf[key].shape) > 1:
+                print(key)
+                print(results[key])
                 ncf[key][:,:] = results[key]
             elif len(ncf[key].shape) == 1:
                 ncf[key][steps[0]:steps[1]] = results[key][0:steps[1]-steps[0]]

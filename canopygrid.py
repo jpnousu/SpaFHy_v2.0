@@ -21,6 +21,7 @@ Modified by khaahti, jpnousu
 import numpy as np
 import configparser
 from netCDF4 import Dataset
+import matplotlib.pyplot as plt
 eps = np.finfo(float).eps
 
 class CanopyGrid():
@@ -64,6 +65,7 @@ class CanopyGrid():
         self._LAIgrass_max = state['LAI_grass']
         self._LAIgrass = state['LAI_grass'] * self.phenopara['LAI_decid_min']
         self._LAIshrub = np.maximum(state['LAI_shrub'], eps)
+
         self.LAI = self._LAIconif + self._LAIdecid + self._LAIshrub + self._LAIgrass
         self._LAIdecid_max = state['LAI_decid']  # m2m-2
 
@@ -145,6 +147,7 @@ class CanopyGrid():
         #    VPD = 0.1
         
         """ --- update phenology: self.ddsum & self.X ---"""
+ 
         #self.update_daily(Ta, doy)
         self._degreeDays(Ta, doy)
         fPheno = self._photoacclim(Ta)
@@ -278,6 +281,7 @@ class CanopyGrid():
 
         # beginning of year
         ix = np.where(self.DDsum <= ddo)
+
         f[ix] = lai_min
         self._growth_stage[ix] = 0.
         self._senesc_stage[ix] = 0.
