@@ -11,6 +11,7 @@ from scipy.stats.mstats import gmean
 from scipy.interpolate import interp1d
 from scipy.sparse import diags, linalg
 import matplotlib.pyplot as plt
+import sys
 eps = np.finfo(float).eps
 
 apply_vectorized = np.vectorize(lambda f, x: f(x))
@@ -147,7 +148,12 @@ class SoilGrid_2Dflow(object):
         self.conv99 = 99
         #self.totit = 0
 
-        print('ditch_h uniques', np.unique(self.ditch_h))
+        #print('ditch_h uniques', np.unique(self.ditch_h))
+
+        #print('self.ele[143:146,140:143]', self.ele[143:146,140:143])
+        #print('self.ditch_h[143:146,140:143]', self.ditch_h[143:146,140:143])
+        #print('self.soiltype[143:146,140:143]', self.soiltype[143:146,140:143])
+        #sys.exit()
 
     def rolling_window(self, a, window):
         shape = a.shape[:-1] + (a.shape[-1] - window + 1, window)
@@ -269,131 +275,95 @@ class SoilGrid_2Dflow(object):
         crit = 1e-3  # loosened this criteria from 1e-4, seems mass balance error remains resonable
         maxiter = 100
 
-        for it in range(maxiter):
+        # timestep adaptive
+        t_final = 1.0
+        t_simulated = 0.0
+        err1 = 999.0
+        it = 0
 
-            # differential water capacity dSto/dh
-            for key, value in self.gwl_to_C.items():
-                self.CC[self.soiltype == key] = value(Htmp[self.soiltype == key] - self.ele[self.soiltype == key])
-            alfa = np.ravel(self.CC * self.dxy**2 / dt)
-            # alfa = np.ravel((0.5*self.CC + 0.5*CCtmp) * self.dxy**2 / dt)
+        while t_simulated < t_final:
 
-            # water storage
-            for key, value in self.gwl_to_wsto.items():
-                self.Wtso1_deep[self.soiltype == key] = value(Htmp[self.soiltype == key] - self.ele[self.soiltype == key])
+            while err1 > crit or it < maxiter:
+                it += 1
+                # differential water capacity dSto/dh
+                for key, value in self.gwl_to_C.items():
+                    self.CC[self.soiltype == key] = value(Htmp[self.soiltype == key] - self.ele[self.soiltype == key])
+                alfa = np.ravel(self.CC * self.dxy**2 / dt)
 
-            # Setup of diagonal sparse matrix
-            a_d = self.implic * (TrW1 + TrE1 + TrN1 + TrS1) + alfa  # Diagonal
-            a_w = -self.implic * TrW1[1:]  # West element
-            a_e = -self.implic * TrE1[:-1]  # East element
-            a_n = -self.implic * TrN1[self.cols:]  # North element
-            a_s = -self.implic * TrS1[:self.n-self.cols]  # South element
+                # water storage
+                for key, value in self.gwl_to_wsto.items():
+                    self.Wtso1_deep[self.soiltype == key] = value(Htmp[self.soiltype == key] - self.ele[self.soiltype == key])
 
-            # Knowns: Right hand side of the eq
-            Htmp = np.ravel(Htmp)
-            hs = (np.ravel(S) * dt * self.dxy**2 + alfa * Htmp
-                   - np.ravel(self.Wtso1_deep) * self.dxy**2 / dt + Wsto_deep * self.dxy**2 / dt
-                  + (1.-self.implic) * (TrN0*HN) + (1.-self.implic) * (TrW0*HW)
-                  - (1.-self.implic) * (TrN0 + TrW0 + TrE0 + TrS0) * H
-                  + (1.-self.implic) * (TrE0*HE) + (1.-self.implic) * (TrS0*HS))
+                # Setup of diagonal sparse matrix
+                a_d = self.implic * (TrW1 + TrE1 + TrN1 + TrS1) + alfa  # Diagonal
+                a_w = -self.implic * TrW1[1:]  # West element
+                a_e = -self.implic * TrE1[:-1]  # East element
+                a_n = -self.implic * TrN1[self.cols:]  # North element
+                a_s = -self.implic * TrS1[:self.n-self.cols]  # South element
 
-            # Ditches
-            for k in np.where(ditch_h < -eps)[0]:
-                # update a_x and hs when ditch as constant head
-                if H_neighbours[k] > ele[k] + ditch_h[k]: # average of neighboring H above ditch depth
-                    hs[k] = ele[k] + ditch_h[k]
-                    a_d[k] = 1
-                    if k%self.cols != 0:  # west node
-                        a_w[k-1] = 0
-                    if (k+1)%self.cols != 0:  # east node
-                        a_e[k] = 0
-                    if k-self.cols >= 0:  # north node
-                        a_n[k-self.cols] = 0
-                    if k+self.cols < self.n:  # south node
-                        a_s[k] = 0 # ONKO OIKEIN?? NÄMÄ INDEKSIT VOISI TARKASTAA
+                # Knowns: Right hand side of the eq
+                Htmp = np.ravel(Htmp)
+                hs = (np.ravel(S) * dt * self.dxy**2 + alfa * Htmp
+                    - np.ravel(self.Wtso1_deep) * self.dxy**2 / dt + Wsto_deep * self.dxy**2 / dt
+                    + (1.-self.implic) * (TrN0*HN) + (1.-self.implic) * (TrW0*HW)
+                    - (1.-self.implic) * (TrN0 + TrW0 + TrE0 + TrS0) * H
+                    + (1.-self.implic) * (TrE0*HE) + (1.-self.implic) * (TrS0*HS))
 
-            A = diags([a_d, a_w, a_e, a_n, a_s], [0, -1, 1, -self.cols, self.cols],format='csc')
+                # Ditches
+                for k in np.where(ditch_h < -eps)[0]:
+                    # update a_x and hs when ditch as constant head
+                    if H_neighbours[k] > ele[k] + ditch_h[k]: # average of neighboring H above ditch depth
+                        hs[k] = ele[k] + ditch_h[k]
+                        a_d[k] = 1
+                        if k%self.cols != 0:  # west node
+                            a_w[k-1] = 0
+                        if (k+1)%self.cols != 0:  # east node
+                            a_e[k] = 0
+                        if k-self.cols >= 0:  # north node
+                            a_n[k-self.cols] = 0
+                        if k+self.cols < self.n:  # south node
+                            a_s[k] = 0 # ONKO OIKEIN?? NÄMÄ INDEKSIT VOISI TARKASTAA
 
-            #print('mean hs', np.mean(hs))
-            #if self.tmstep > 19:
-                #print('A', A)
-                #print('hs', np.mean(hs))
+                A = diags([a_d, a_w, a_e, a_n, a_s], [0, -1, 1, -self.cols, self.cols],format='csc')
 
-            # Solve: A*Htmp1 = hs
-            Htmp1 = linalg.spsolve(A,hs)
-
-            # testing, limit change
-            #if np.any(np.abs(Htmp1-Htmp)) > 0.5:
-                #print('Difference greater than 0.5')
-
-            Htmp1 = np.where(np.abs(Htmp1-Htmp)> 0.5, Htmp + 0.5*np.sign(Htmp1-Htmp), Htmp1)
-
-            conv1 = np.max(np.abs(Htmp1 - Htmp))
-                      
-            max_index = np.unravel_index(np.argmax(np.abs(Htmp1 - Htmp)),(self.rows,self.cols))
-
-            # especially near profile bottom, solution oscillates so added these steps to avoid that
-            if it > 40:
-                Htmp = 0.25*Htmp1+0.75*Htmp
-            elif it > 20:
-                Htmp = 0.5*Htmp1+0.5*Htmp
-            else:
-                Htmp = Htmp1.copy()
-
-            if np.any(np.abs(Htmp1-Htmp)) > 0.5:
-                Htmp_print = np.reshape(Htmp,(self.rows,self.cols))
-                print('Difference greater than 0.5')
-                print('\t', 'iterations:', it, ' con1:', conv1, 
-                      ' max_index:', max_index, ' self.ditch_h[max_index]', self.ditch_h[max_index],
-                      ' H[max_index]', Htmp_print[max_index]-self.ele[max_index])
-
-            Htmp = np.reshape(Htmp,(self.rows,self.cols))
-
-            # print to get sense what's happening when problems in convergence
-            if it > 90:
-                print('\t', 'iterations:', it, ' con1:', conv1, 
-                      ' max_index:', max_index, ' self.ditch_h[max_index]', self.ditch_h[max_index],
-                      ' H[max_index]', Htmp[max_index]-self.ele[max_index])
+                # Solve: A*Htmp1 = hs
+                Htmp1 = linalg.spsolve(A,hs)
                 
-                Htmp_N_temp = Htmp[(max_index[0]-1, max_index[1])]
-                Htmp_S_temp = Htmp[(max_index[0]+1, max_index[1])]
-                Htmp_W_temp = Htmp[(max_index[0], max_index[1]-1)]
-                Htmp_E_temp = Htmp[(max_index[0], max_index[1]+1)]
+                # if problems reaching convergence devide time step and retry
+                if np.any(np.abs(Htmp1-Htmp)) > 0.7:                
+                    if dt / 2.0 > 0.1:
+                        dt = max(dt / 2.0, 0.125)
+                        print('iteration timestep divided, new dt = ', dt)
+                        Htmp = np.reshape(Htmp,(self.rows,self.cols))
+                        it = 0
+                        continue
+                    else:
+                        print('no convergence with dt = ', dt)
+                        break
+                
+                #Htmp1 = np.where(np.abs(Htmp1-Htmp)> 0.5, Htmp + 0.5*np.sign(Htmp1-Htmp), Htmp1)
 
-                H_N_temp = Htmp[(max_index[0]-1, max_index[1])] - self.ele[(max_index[0]-1, max_index[1])]
-                H_S_temp = Htmp[(max_index[0]+1, max_index[1])] - self.ele[(max_index[0]+1, max_index[1])]
-                H_W_temp = Htmp[(max_index[0], max_index[1]-1)] - self.ele[(max_index[0], max_index[1]-1)]
-                H_E_temp = Htmp[(max_index[0], max_index[1]+1)] - self.ele[(max_index[0], max_index[1]+1)]
+                conv1 = np.max(np.abs(Htmp1 - Htmp))
+                        
+                max_index = np.unravel_index(np.argmax(np.abs(Htmp1 - Htmp)),(self.rows,self.cols))
 
-                TrN1_temp = np.reshape(TrN1,(self.rows,self.cols))[(max_index[0]-1, max_index[1])]
-                TrS1_temp = np.reshape(TrS1,(self.rows,self.cols))[(max_index[0]+1, max_index[1])]
-                TrW1_temp = np.reshape(TrW1,(self.rows,self.cols))[(max_index[0], max_index[1]-1)]
-                TrE1_temp = np.reshape(TrE1,(self.rows,self.cols))[(max_index[0], max_index[1]+1)]
+                # especially near profile bottom, solution oscillates so added these steps to avoid that
+                #if it > 40:
+                #    Htmp = 0.25*Htmp1+0.75*Htmp
+                #elif it > 20:
+                #    Htmp = 0.5*Htmp1+0.5*Htmp
+                #else:
+                #    Htmp = Htmp1.copy()
 
-                #print('Max Htmp1-Htmp', np.max(np.abs(Htmp1-Htmp)))
-                print('Htmp of max_index:', Htmp[max_index])
-                print('Htmp of N neighbor:', Htmp_N_temp)
-                print('Htmp of S neighbor:', Htmp_S_temp)
-                print('Htmp of W neighbor:', Htmp_W_temp)
-                print('Htmp of E neighbor:', Htmp_E_temp)
+                Htmp = np.reshape(Htmp,(self.rows,self.cols))
 
-                print('H of max_index:', Htmp[max_index] - self.ele[max_index])
-                print('H of N neighbor:', H_N_temp)
-                print('H of S neighbor:', H_S_temp)
-                print('H of W neighbor:', H_W_temp)
-                print('H of E neighbor:', H_E_temp)                
+            if it == 99:
+                self.conv99 +=1
 
-                print('Tr of N neighbor:', TrN1_temp)
-                print('Tr of S neighbor:', TrS1_temp)
-                print('Tr of W neighbor:', TrW1_temp)
-                print('Tr of E neighbor:', TrE1_temp)
-
-            if conv1 < crit:
-                break
-            # end of iteration loop
-        if it == 99:
-            self.conv99 +=1
         #self.totit += it
-        print('Timestep:', self.tmstep, ', iterations:', it, ', conv1:', conv1, ', H[max_index]:', Htmp[max_index]-self.ele[max_index])
+        Htmp1_print = np.reshape(Htmp1,(self.rows,self.cols))
+        print('Timestep:', self.tmstep, ', iterations:', it, ', conv1:', conv1, ', H[max_index]:', Htmp[max_index]-self.ele[max_index], 
+              'H[max_index]-H1[max_index]', (Htmp[max_index]-self.ele[max_index])-(Htmp1_print[max_index]-self.ele[max_index]))
         
         # lateral flow is calculated in two parts: one depending on previous time step
         # and other on current time step (lateral flowsee 2/2). Their weighting depends

@@ -11,10 +11,10 @@ def parameters(folder=''):
 
     pgen = {'description': 'final_run',  # description written in result file
             'simtype': '2D', # 1D, TOP, 2D,
-            'start_date': '2013-01-01',  # '2011-01-01', for tests: '2020-01-01'
-            'end_date': '2013-02-01', # 2017-12-31,
+            'start_date': '2011-01-01',  # '2011-01-01', for tests: '2020-01-01'
+            'end_date': '2017-12-31', # 2017-12-31,
             #'spinup_file': r'F:\SpaFHy_2D_2021/testcase_input_202304051037_spinup.nc',
-            'spinup_end': '2013-01-01',  # '2014-12-31', for tests: '2020-09-01' results after this are saved in result file
+            'spinup_end': '2014-12-31',  # '2014-12-31', for tests: '2020-09-01' results after this are saved in result file
             'dt': 86400.0,
             'spatial_cpy': True,  # if False uses parameters from cpy['state']
             # else needs cf.dat, hc.dat, LAI_decid.dat, LAI_spruce.dat, LAI_pine.dat, (cmask.dat)
@@ -274,9 +274,9 @@ def deep_properties():
     e.g. z = [-0.05, -0.15] means first layer tickness is 5 cm and second 10 cm.
     """
     deepp = {
-        'Postglacial_sand':{ # Launiainen et al. 2021
+        'Postglacial_sand':{ # Postglacial sand: Sterte et al. 2018
             'deep_id': 1,
-            'deep_z': [-1.2, -3.8, -4.0, -14.4, -16.0], # -16.0
+            'deep_z': [-1.2, -3.8, -4.0, -27.9, -31.0], # -31.0 OK
             'pF': {  # vanGenuchten water retention parameters
                     'ThetaS': [0.41,0.41,0.41,0.41,0.41], # Launiainen et al. 2021
                     'ThetaR': [0.05,0.05,0.05,0.05,0.05], # Launiainen et al. 2021
@@ -284,29 +284,29 @@ def deep_properties():
                     'n': [1.2,1.2,1.2,1.2,1.2]}, # Launiainen et al. 2021
             'deep_ksat': [1E-07,3E-5,1E-8,3E-5,1E-4],
                 },
-        'Glaciofluvial_sediment':{ # CoarseText
+        'Glaciofluvial_sediment':{ # Glacial deposit: Sterte et al. 2018
             'deep_id': 2,
-            'deep_z': [-27.0], # -27.0
+            'deep_z': [-27.0], # -27.0 OK
             'pF': {  # vanGenuchten water retention parameters
-                    'ThetaS': [0.41], # Launiainen et al. 2021
-                    'ThetaR': [0.05], # Launiainen et al. 2021
+                    'ThetaS': [0.41], # Launiainen et al. 2021 CoarseText
+                    'ThetaR': [0.05], # Launiainen et al. 2021 
                     'alpha': [0.024], # Launiainen et al. 2021
                     'n': [1.2]}, # Launiainen et al. 2021
-            'deep_ksat': [1E-04],
+            'deep_ksat': [1E-04], #
                 },
-        'Peat':{
+        'Peat':{ # Peat: Sterte et al. 2018 
             'deep_id': 3,
-            'deep_z': [-5.0, -7.0, -17.0], # -17.0
+            'deep_z': [-5.0, -7.0, -17.0], # -17.0 OK
             'pF': {  # vanGenuchten water retention parameters
                     'ThetaS': [0.89,0.89,0.89],
                     'ThetaR': [0.196,0.196,0.196],
                     'alpha': [0.072,0.072,0.072],
                     'n': [1.255,1.255,1.255]}, 
-            'deep_ksat': [1E-06,1E-9,1E-6], 
+            'deep_ksat': [1E-06,1E-9,1E-7], 
                 },
-        'Postglacial_sand_gravel':{ # CoarseText
+        'Postglacial_sand_gravel':{ # Sandy sediment: Sterte et al. 2018 
             'deep_id': 4, 
-            'deep_z': [-0.8, -3.0, -14.0], # -14.0
+            'deep_z': [-0.8, -3.0, -14.0], # -14.0 OK
             'pF': {  # vanGenuchten water retention parameters
                     'ThetaS': [0.41,0.41,0.41], # Launiainen et al. 2021
                     'ThetaR': [0.05,0.05,0.05], # Launiainen et al. 2021
@@ -314,29 +314,29 @@ def deep_properties():
                     'n': [1.2,1.2,1.2]}, # Launiainen et al. 2021
             'deep_ksat': [3E-5, 1E-8, 1E-6],
                 },
-        'Clay_silt':{ # Fine
+        'Clay_silt':{ # Silt/Clay: Sterte et al. 2018 
             'deep_id': 5,
-            'deep_z': [-3, -23.0], # -23.0
+            'deep_z': [-3, -23.0], # -23.0 OK
             'pF': {  # vanGenuchten water retention parameters
                     'ThetaS': [0.6,0.6],
                     'ThetaR': [0.07,0.07],
                     'alpha': [0.018,0.018],
                     'n': [1.16,1.16]},
-            'deep_ksat': [1E-08, 1E-6],
+            'deep_ksat': [1E-08, 1E-7],
                 },
-        'Washed_sediment_gravel_boulders':{ # CoarseText
+        'Washed_sediment_gravel_boulders':{ # Till: Sterte et al. 2018 
             'deep_id': 6,
-            'deep_z': [-0.5, -2.5, -13.0], # -13.0
+            'deep_z': [-0.5, -2.5, -13.0], # -13.0 OK
             'pF': {  # vanGenuchten water retention parameters
                     'ThetaS': [0.41,0.41,0.41], # Launiainen et al. 2021
                     'ThetaR': [0.05,0.05,0.05], # Launiainen et al. 2021
                     'alpha': [0.024,0.024,0.024], # Launiainen et al. 2021
                     'n': [1.2,1.2,1.2]}, # Launiainen et al. 2021
-            'deep_ksat': [2E-06, 2E-6, 1E-6],
+            'deep_ksat': [2E-07, 2E-7, 1E-7],
                 },
         'Water':{ # Medium
             'deep_id': 7,
-            'deep_z': [-17.0], # -17.0
+            'deep_z': [-17.0], # -17.0 OK
             'pF': {  # vanGenuchten water retention parameters
                     'ThetaS': [0.43], # Launiainen et al. 2019
                     'ThetaR': [0.05], # Launiainen et al. 2019
@@ -344,29 +344,29 @@ def deep_properties():
                     'n': [1.2]}, # # Launiainen et al. 2021
             'deep_ksat': [1E-05],
                 },        
-        'Moraine':{ # Medium
+        'Moraine':{ # Till: Sterte et al. 2018 
             'deep_id': 8,
-            'deep_z': [-0.5, -2.5, -13.0], # -13.0
+            'deep_z': [-0.5, -2.5, -31.0], # -13.0 OK
             'pF': {  # vanGenuchten water retention parameters
                     'ThetaS': [0.43,0.43,0.43], # Launiainen et al. 2019
                     'ThetaR': [0.05,0.05,0.05], # Launiainen et al. 2019
                     'alpha': [0.024,0.024,0.024], # Launiainen et al. 2019
                     'n': [1.2,1.2,1.2]}, # # Launiainen et al. 2021
-            'deep_ksat': [2E-06, 2E-6, 1E-6],
+            'deep_ksat': [2E-07, 2E-7, 1E-7],
                 },        
-        'Fill':{ # Medium
+        'Fill':{ # Till: Sterte et al. 2018 
             'deep_id': 9,
-            'deep_z': [-0.5, -2.5, -13.0], # -18.0
+            'deep_z': [-0.5, -2.5, -13.0], # -13.0 OK
             'pF': {  # vanGenuchten water retention parameters
                     'ThetaS': [0.43,0.43,0.43], # Launiainen et al. 2019
                     'ThetaR': [0.05,0.05,0.05], # Launiainen et al. 2019
                     'alpha': [0.024,0.024,0.024], # Launiainen et al. 2019
                     'n': [1.2,1.2,1.2]}, # # Launiainen et al. 2021
-            'deep_ksat': [2E-06, 2E-6, 1E-6],
+            'deep_ksat': [2E-07, 2E-7, 1E-7],
                 }, 
-        'Bedrock':{
+        'Bedrock':{ # Bedrock: Sterte et al. 2018 
             'deep_id': 10,
-            'deep_z': [-5.0], # -1.0
+            'deep_z': [-20.0], # -1.0 OK
             'pF': {  # vanGenuchten water retention parameters
                     'ThetaS': [0.43], # Launiainen et al. 2019
                     'ThetaR': [0.05], # Launiainen et al. 2019
@@ -374,15 +374,15 @@ def deep_properties():
                     'n': [1.2]}, # # Launiainen et al. 2021
             'deep_ksat': [1E-05],
                 },         
-        'Fluvial_sedimend_sand':{ # Fine
+        'Fluvial_sedimend_sand':{ # Sandy sediments: Sterte et al. 2018 
             'deep_id': 11,
-            'deep_z': [-0.8, -3.0, -14.0], # -32.0
+            'deep_z': [-0.8, -3.0, -32.], # -32.0 OK
             'pF': {  # vanGenuchten water retention parameters
                     'ThetaS': [0.41,0.41,0.41],
                     'ThetaR': [0.05,0.05,0.05],
                     'alpha': [0.024,0.024,0.024],
                     'n': [1.2,1.2,1.2]},
-            'deep_ksat': [3E-5, 1E-8, 1E-6],
+            'deep_ksat': [3E-5, 1E-9, 1E-7],
                 },           
         }
     return deepp
