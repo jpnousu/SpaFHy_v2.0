@@ -272,18 +272,18 @@ class SoilGrid_2Dflow(object):
         Htmp1 = self.H.copy()
 
         # convergence criteria
-        crit = 1e-3  # loosened this criteria from 1e-4, seems mass balance error remains resonable
+        crit = 1e-3  # it seems mass balance error remains resonable with 1e-3
         maxiter = 100
 
-        # timestep adaptive
-        t_final = 1.0
-        t_simulated = 0.0
-        err1 = 999.0
-        it = 0
+        # adaptive timestep 
+        t_final = 1.0       # days
+        t_simulated = 0.0   # 0 in the beginning
+        conv1 = 999.0       # error
+        it = 0              # iteration count
+        min_dt = 0.1        # minimum timestep
 
-        while t_simulated < t_final:
-
-            while err1 > crit or it < maxiter:
+        while t_simulated < t_final: # simulating until t_final
+            while conv1 > crit and it < maxiter: # simulating until criteria or maxiter
                 it += 1
                 # differential water capacity dSto/dh
                 for key, value in self.gwl_to_C.items():
@@ -328,10 +328,22 @@ class SoilGrid_2Dflow(object):
 
                 # Solve: A*Htmp1 = hs
                 Htmp1 = linalg.spsolve(A,hs)
+
+                Htmp1 = np.where(np.abs(Htmp1-Htmp)> 0.5, Htmp + 0.5*np.sign(Htmp1-Htmp), Htmp1)
+                conv1 = np.max(np.abs(Htmp1 - Htmp))          
+                max_index = np.unravel_index(np.argmax(np.abs(Htmp1 - Htmp)),(self.rows,self.cols))
+
+                # especially near profile bottom, solution oscillates so added these steps to avoid that
+                if it > 40:
+                    Htmp = 0.25*Htmp1+0.75*Htmp
+                elif it > 20:
+                    Htmp = 0.5*Htmp1+0.5*Htmp
+                else:
+                    Htmp = Htmp1.copy()
                 
                 # if problems reaching convergence devide time step and retry
-                if np.any(np.abs(Htmp1-Htmp)) > 0.7:                
-                    if dt / 2.0 > 0.1:
+                if np.any(np.abs(Htmp1-Htmp)) > 0.5:
+                    if dt / 2.0 > min_dt:
                         dt = max(dt / 2.0, 0.125)
                         print('iteration timestep divided, new dt = ', dt)
                         Htmp = np.reshape(Htmp,(self.rows,self.cols))
@@ -339,26 +351,15 @@ class SoilGrid_2Dflow(object):
                         continue
                     else:
                         print('no convergence with dt = ', dt)
+                        Htmp = np.reshape(Htmp,(self.rows,self.cols))
                         break
-                
-                #Htmp1 = np.where(np.abs(Htmp1-Htmp)> 0.5, Htmp + 0.5*np.sign(Htmp1-Htmp), Htmp1)
+                else:
+                    Htmp = np.reshape(Htmp,(self.rows,self.cols))
 
-                conv1 = np.max(np.abs(Htmp1 - Htmp))
-                        
-                max_index = np.unravel_index(np.argmax(np.abs(Htmp1 - Htmp)),(self.rows,self.cols))
+                if it == 99:
+                    self.conv99 +=1
 
-                # especially near profile bottom, solution oscillates so added these steps to avoid that
-                #if it > 40:
-                #    Htmp = 0.25*Htmp1+0.75*Htmp
-                #elif it > 20:
-                #    Htmp = 0.5*Htmp1+0.5*Htmp
-                #else:
-                #    Htmp = Htmp1.copy()
-
-                Htmp = np.reshape(Htmp,(self.rows,self.cols))
-
-            if it == 99:
-                self.conv99 +=1
+            t_simulated += dt
 
         #self.totit += it
         Htmp1_print = np.reshape(Htmp1,(self.rows,self.cols))
