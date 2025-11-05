@@ -2,7 +2,7 @@
 """
 Created on Fri Dec 21 12:58:54 2018
 
-@author: khaahti
+@author: khaahti & jpnousu
 """
 import numpy as np
 eps = np.finfo(float).eps
@@ -41,7 +41,7 @@ class SoilGrid(object):
                 'org_sat': organic top layer saturation ratio (-)
                 'pond_storage': initial pond depth at surface [m]
         """
-        # top layer is interception storage, which capacity is depends on its depth [m]
+        # top layer is interception storage, which capacity depends on its depth [m]
         # and field capacity
         self.dz_top = spara['org_depth']  # depth, m3 m-3
         self.poros_top = spara['org_poros']  # porosity, m3 m-3
@@ -53,7 +53,7 @@ class SoilGrid(object):
         # pond storage
         self.h_pond_max = spara['pond_storage_max']
 
-        # interpolated functions for soil column ground water dpeth vs. water storage
+        # interpolated functions for soil column ground water depth vs. water storage
         self.wsto_to_gwl = spara['wtso_to_gwl']
         self.gwl_to_wsto = spara['gwl_to_wsto']
         self.gwl_to_Ksat = spara['gwl_to_Ksat']
@@ -90,7 +90,6 @@ class SoilGrid(object):
 
         # toplayer storage and relative conductance for evaporation
         self.Wsto_top = self.Wsto_top_max * spara['org_sat']
-
         self.Wliq_top = self.poros_top * self.Wsto_top / self.Wsto_top_max
         self.Ree = np.maximum(0.0, np.minimum(
                 0.98*self.Wliq_top / self.rw_top, 1.0)) # relative evaporation rate (-)

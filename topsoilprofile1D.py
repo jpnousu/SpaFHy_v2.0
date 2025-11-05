@@ -2,7 +2,7 @@
 """
 Created on Fri Dec 21 12:58:54 2018
 
-@author: khaahti
+@author: khaahti & jpnousu
 """
 import numpy as np
 eps = np.finfo(float).eps
@@ -355,7 +355,3 @@ def Ksat_layer(dz, Ksat, gwl, DitchDepth):
             Ka = sum(Trans[ix]) / sum(dz_sat[ix])  # effective hydraulic conductivity ms-1
 
     return Ka
-
-nan_function = interp1d(np.array([np.nan, np.nan]),
-                        np.array([np.nan, np.nan]),
-                        fill_value='extrapolate')
