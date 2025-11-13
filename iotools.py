@@ -26,13 +26,13 @@ def initialize_parameters(catchment, folder):
     """
     Dynamically import parameters module based on the catchment and initialize global variables.
     """
-    global pgen, pcpy, pbu, pspd, ptop, aux
+    global pgen, pcpy, pbu, pspd, pdrain, ptop, aux
 
     # Dynamically import the correct parameters module
     parameters_module = importlib.import_module(f'parameters_{catchment}')
 
     # Initialize the parameters
-    pgen, pcpy, pbu, pspd = parameters_module.parameters(folder=folder)
+    pgen, pcpy, pbu, pspd, pdrain = parameters_module.parameters(folder=folder)
     ptop = parameters_module.ptopmodel()
     aux = parameters_module.auxiliary_grids()
 
@@ -237,6 +237,35 @@ def read_ds_gisdata(fpath, spatial_pspd, mask=None, plotgrids=False):
                 'yllcorner': yllcorner})
     return gis
 
+def read_drain_gisdata(fpath, spatial_pdrain, mask=None):
+    """
+    reads gis-data grids and returns numpy 2d-arrays
+    Args:
+        fpath - relative path to data folder (str)
+        plotgrids - True plots
+    
+    Returns:
+        xx - yy
+        xx - yy
+    """    
+    fpath = os.path.join(workdir, fpath)
+
+    gis = {}
+    
+    for key, boolean in spatial_pdrain.items():
+        if boolean:
+            data, info, _, cellsize, _ = read_AsciiGrid(os.path.join(fpath, pdrain[key]))
+            gis[key] = data
+    
+    xllcorner = int(re.findall(r'\d+', info[2])[0])
+    yllcorner = int(re.findall(r'\d+', info[3])[0])
+    
+    gis.update({'dxy': cellsize})
+    gis.update({'xllcorner': xllcorner,
+                'yllcorner': yllcorner})
+
+    return gis
+
 def read_top_gisdata(fpath, spatial_ptop, mask=None, plotgrids=False):
     """
     reads gis-data grids and returns numpy 2d-arrays
@@ -427,7 +456,7 @@ def preprocess_budata(pbu, spatial_pbu, orgp, rootp, gisdata, spatial=True):
     return data
 
 
-def preprocess_dsdata(pspd, spatial_pspd, deepp, gisdata, spatial=True):
+def preprocess_dsdata(pspd, spatial_pspd, gisdata):
     """
     creates input dictionary for initializing SoilGrid
     Args:
@@ -662,6 +691,31 @@ def preprocess_cpydata(pcpy, spatial_pcpy, gisdata, spatial=True):
     pcpy['state'] = data
 
     return pcpy
+
+def preprocess_draindata(pdrain, spatial_pdrain, gisdata, spatial=True):
+    """
+    creates input dictionary for initializing xx
+    Args:
+        canopy parameters
+        gisdata
+            xx - yy
+            xx - yy
+        spatial
+    """
+    # inputs for CanopyGrid initialization: update pcpy using spatial data
+    data = pdrain.copy()
+    spatial_data = spatial_pdrain.copy()
+    gridshape = np.ones(shape=gisdata['LAI_conif'].shape)
+
+    for key in data:
+        if spatial_data[key] == True:
+            data[key] = gisdata[key]
+        if spatial_data[key] == False:
+            uni_value = data[key]
+            data[key] = np.full_like(gridshape, uni_value)
+
+    return pdrain
+
 
 def preprocess_topdata(ptop, spatial_ptop, gisdata, spatial=True):
     """

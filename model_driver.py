@@ -54,7 +54,7 @@ def driver(catchment, catchment_no, create_ncf=False, create_spinup=False, outpu
     pgen['mask'] = catchment_no
 
     # load and process parameters
-    pgen, pcpy, pbu, pds, cmask, ptop, gisinfo = preprocess_parameters(pgen, catchment, folder)
+    pgen, pcpy, pbu, pds, cmask, ptop, pdrain, gisinfo = preprocess_parameters(pgen, catchment, folder)
 
     # new directory for results files
     results_folder = create_simulation_folder(pgen)
@@ -85,6 +85,8 @@ def driver(catchment, catchment_no, create_ncf=False, create_spinup=False, outpu
         results = _append_results('parameters', pds, results)
     elif pgen['simtype'] == 'TOP':
         results = _append_results('parameters', ptop, results)
+    elif pgen['simtype'] == 'WT':
+        results = _append_results('parameters', pdrain, results)
 
     if create_ncf:
         ncf, outputfile = initialize_netcdf(
@@ -125,14 +127,14 @@ def driver(catchment, catchment_no, create_ncf=False, create_spinup=False, outpu
     # this here so that we save params
     dir_path = pgen['results_folder']
     # Loop through each dictionary and save it
-    dicts = {'pgen': pgen, 'pcpy': pcpy, 'pbu': pbu, 'pds': pds, 'ptop': ptop}
+    dicts = {'pgen': pgen, 'pcpy': pcpy, 'pbu': pbu, 'pds': pds, 'ptop': ptop, 'pdrain': pdrain}
     for dict_name, dict_data in dicts.items():
         file_path = os.path.join(dir_path, f'{dict_name}.txt')
         with open(file_path, 'w') as file:
             pprint.pprint(dict_data, stream=file, indent=4, width=100)
     
     # initialize SpaFHy
-    spa = SpaFHy(pgen, pcpy, pbu, pds, ptop)
+    spa = SpaFHy(pgen, pcpy, pbu, pds, ptop, pdrain)
 
     # run spa timesteps
     for k in range(0, Nsteps):
@@ -178,15 +180,15 @@ def driver(catchment, catchment_no, create_ncf=False, create_spinup=False, outpu
     else:
         print('--- Running time %.2f seconds ---' % (time.time() - running_time))
         if output:
-            return results, spa, pcpy, pbu, ptop, cmask
+            return results, spa, pcpy, pbu, ptop, pdrain, cmask
 
 def preprocess_parameters(pgen, catchment, folder=''):
     """
     Reading gisdata if applicable and preprocesses parameters
     """
 
-    from iotools import read_bu_gisdata, read_ds_gisdata, read_cpy_gisdata, read_top_gisdata, read_aux_gisdata
-    from iotools import preprocess_budata, preprocess_cpydata, preprocess_topdata
+    from iotools import read_bu_gisdata, read_ds_gisdata, read_cpy_gisdata, read_top_gisdata, read_aux_gisdata, read_drain_gisdata
+    from iotools import preprocess_budata, preprocess_cpydata, preprocess_topdata, preprocess_draindata
     from iotools import preprocess_dsdata_vec as preprocess_dsdata
     #from iotools import preprocess_dsdata
 
@@ -202,7 +204,7 @@ def preprocess_parameters(pgen, catchment, folder=''):
     ptopmodel = parameters_module.ptopmodel
     auxiliary_grids = parameters_module.auxiliary_grids
 
-    _, pcpy, pbu, pspd = parameters(folder)
+    _, pcpy, pbu, pspd, pdrain = parameters(folder)
     ptop = ptopmodel()
     aux = auxiliary_grids()
     
@@ -227,6 +229,13 @@ def preprocess_parameters(pgen, catchment, folder=''):
             spatial_pspd[key] = False
         if isinstance(pspd[key], str):
             spatial_pspd[key] = True
+
+    spatial_pdrain = {}
+    for key in pdrain:
+        if isinstance(pdrain[key], float):
+            spatial_pdrain[key] = False
+        if isinstance(pdrain[key], str):
+            spatial_pdrain[key] = True
 
     spatial_ptop = {}
     for key in ptop:
@@ -264,6 +273,9 @@ def preprocess_parameters(pgen, catchment, folder=''):
 
     if pgen['simtype'] == '2D':
         gisdata.update(read_ds_gisdata(pgen['gis_folder'], spatial_pspd))
+
+    if pgen['simtype'] == 'WT':
+        gisdata.update(read_drain_gisdata(pgen['gis_folder'], spatial_pdrain))
 
     if (pgen['spatial_cpy'] == False and
         pgen['spatial_soil'] == False and
@@ -338,7 +350,10 @@ def preprocess_parameters(pgen, catchment, folder=''):
         dsdata = preprocess_dsdata(pspd, spatial_pspd, deepp, gisdata, pgen['spatial_soil'])
     else:
         dsdata = pspd.copy() # dummy
-        
+
+    if pgen['simtype'] == 'WT':
+         pdrain = preprocess_dsdata(pdrain, spatial_pdrain, gisdata)
+       
     gisinfo = {}
     gisinfo['xllcorner'] = gisdata['xllcorner']
     gisinfo['yllcorner'] = gisdata['yllcorner']
@@ -360,7 +375,7 @@ def preprocess_parameters(pgen, catchment, folder=''):
     except:
         print('*** State variables assigned from parameters.py ***')
 
-    return pgen, cpydata, budata, dsdata, gisdata['cmask'], ptop, gisinfo
+    return pgen, cpydata, budata, dsdata, gisdata['cmask'], ptop, pdrain, gisinfo
 
 
 def preprocess_forcing(pgen):

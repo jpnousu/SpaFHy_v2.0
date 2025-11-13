@@ -237,6 +237,15 @@ def parameters(folder=''):
             'stream_depth': -0.2,   # initial stream water level relative to ground surface (currently not dynamic) [m]
             'lake_depth': -0.2  # initial lake water level relative to ground surface (currently not dynamic) [m]
             }
+    
+    # soil profile (1D)
+    pdrain = {
+            'ditch_depth': 0.5,
+            'ditch_spacing': 40.,
+            'ditch_width': 1.0,
+            'depth_id': 4.0,
+            'drain_ksat': 1E-5
+            }
         
 
     return pgen, pcpy, pbu, pspd
