@@ -399,10 +399,16 @@ class SoilGrid_2Dflow(object):
                     if np.isfinite(self.cmask[i,j]): 
                         self.Tr0[i,j] = self.gwl_to_Tr[i,j](H_for_Tr[i,j] - self.ele[i,j])
 
-        # transmissivity at all four sides of the element is computed as geometric mean of surrounding element transimissivities
-        # is this actually at all four sides, or just along east-west and north-sound axes?
-        TrTmpEW = gmean(self.rolling_window(self.Tr0, 2), -1)
-        TrTmpNS = np.transpose(gmean(self.rolling_window(np.transpose(self.Tr0), 2), -1))
+        # transmissivity at cell interfaces: harmonic mean of the two neighbouring cells
+        # to revert to geometric mean: swap the active/commented lines below (both occurrences in this method)
+        w = self.rolling_window(self.Tr0, 2)
+        d = np.where(w[...,0]+w[...,1] > 0, w[...,0]+w[...,1], 1.0)  # safe denominator
+        TrTmpEW = np.where(w[...,0]+w[...,1] > 0, 2*w[...,0]*w[...,1] / d, 0.0)           # harmonic mean
+        #TrTmpEW = gmean(self.rolling_window(self.Tr0, 2), -1)                              # geometric mean
+        w = self.rolling_window(np.transpose(self.Tr0), 2)
+        d = np.where(w[...,0]+w[...,1] > 0, w[...,0]+w[...,1], 1.0)  # safe denominator
+        TrTmpNS = np.transpose(np.where(w[...,0]+w[...,1] > 0, 2*w[...,0]*w[...,1] / d, 0.0))  # harmonic mean
+        #TrTmpNS = np.transpose(gmean(self.rolling_window(np.transpose(self.Tr0), 2), -1))  # geometric mean
         self.TrW0[:,1:] = TrTmpEW
         self.TrE0[:,:-1] = TrTmpEW
         self.TrN0[1:,:] = TrTmpNS
@@ -458,8 +464,14 @@ class SoilGrid_2Dflow(object):
                             if np.isfinite(self.cmask[i,j]): 
                                 self.Tr1[i,j] = self.gwl_to_Tr[i,j](H_for_Tr[i,j] - self.ele[i,j])            
                 
-                TrTmpEW = gmean(self.rolling_window(self.Tr1, 2),-1)
-                TrTmpNS = np.transpose(gmean(self.rolling_window(np.transpose(self.Tr1), 2),-1))
+                w = self.rolling_window(self.Tr1, 2)
+                d = np.where(w[...,0]+w[...,1] > 0, w[...,0]+w[...,1], 1.0)  # safe denominator
+                TrTmpEW = np.where(w[...,0]+w[...,1] > 0, 2*w[...,0]*w[...,1] / d, 0.0)           # harmonic mean
+                #TrTmpEW = gmean(self.rolling_window(self.Tr1, 2), -1)                              # geometric mean
+                w = self.rolling_window(np.transpose(self.Tr1), 2)
+                d = np.where(w[...,0]+w[...,1] > 0, w[...,0]+w[...,1], 1.0)  # safe denominator
+                TrTmpNS = np.transpose(np.where(w[...,0]+w[...,1] > 0, 2*w[...,0]*w[...,1] / d, 0.0))  # harmonic mean
+                #TrTmpNS = np.transpose(gmean(self.rolling_window(np.transpose(self.Tr1), 2), -1))  # geometric mean
                 self.TrW1[:,1:] = TrTmpEW
                 self.TrE1[:,:-1] = TrTmpEW
                 self.TrN1[1:,:] = TrTmpNS
@@ -1149,8 +1161,9 @@ def transmissivity_vectorized(dz, Ksat, gwl):
 
     # Compute transmissivity of each layer
     Trans = Ksat * dz_sat  # Shape: (n_cells, n_layers)
-
-    return np.maximum(np.nansum(Trans, axis=1), 1e-4 / 86400)
+    
+    #return np.nansum(Trans, axis=1)
+    return np.maximum(np.nansum(Trans, axis=1), 1e-5 / 86400)
 
 
 def wrc(pF, theta=None, psi=None, draw_pF=False):
