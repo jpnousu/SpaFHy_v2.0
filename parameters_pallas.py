@@ -10,9 +10,9 @@ import time
 def parameters(folder=''):
 
     pgen = {'description': 'final_run',  # description written in result file
-            'simtype': 'TOP', # groundwater conceptualizations: '1D', 'TOP' or '2D',
-            'start_date': '2013-01-01', # '2011-01-01', for tests: '2020-01-01'
-            'end_date': '2023-12-31', # 2021-12-31,
+            'simtype': '2D', # groundwater conceptualizations: '1D', 'TOP' or '2D',
+            'start_date': '2018-01-01', # '2011-01-01', for tests: '2020-01-01'
+            'end_date': '2019-12-31', # 2021-12-31,
             #'spinup_file': r'F:\SpaFHy_2D_2021/testcase_input_202304051037_spinup.nc',
             'spinup_end': '2018-12-31',  # '2013-09-01', for tests: '2020-09-01' results after this are saved in result file
             'dt': 86400.0,
@@ -36,12 +36,12 @@ def parameters(folder=''):
             'results_folder': str(pathlib.Path(folder+r'/results')),
             'save_interval': 366, # interval for writing results to file (decreases need for memory during computation)
             'variables':[ # list of output variables (rows can be commented away if not all variables are of interest)
-                    ['parameters_lai_conif', 'leaf area index of conifers [m2 m-2]'],
-                    ['parameters_lai_decid_max', 'leaf area index of decidious trees [m2 m-2]'],
-                    ['parameters_lai_shrub', 'leaf area index of shrubs [m2 m-2]'],
-                    ['parameters_lai_grass', 'leaf area index of grass [m2 m-2]'],
-                    ['parameters_hc', 'canopy height [m]'],
-                    ['parameters_cf', 'canopy closure [-]'],
+                    ['parameters_LAI_conif', 'leaf area index of conifers [m2 m-2]'],
+                    ['parameters_LAI_decid', 'leaf area index of decidious trees [m2 m-2]'],
+                    ['parameters_LAI_shrub', 'leaf area index of shrubs [m2 m-2]'],
+                    ['parameters_LAI_grass', 'leaf area index of grass [m2 m-2]'],
+                    ['parameters_canopy_height', 'canopy height [m]'],
+                    ['parameters_canopy_fraction', 'canopy closure [-]'],
                     ['parameters_org_id', 'soil class index'],
                     ['parameters_root_id', 'soil class index'],
                     ['parameters_deep_id', 'soil class index'],
