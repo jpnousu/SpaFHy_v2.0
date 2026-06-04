@@ -400,15 +400,12 @@ class SoilGrid_2Dflow(object):
                         self.Tr0[i,j] = self.gwl_to_Tr[i,j](H_for_Tr[i,j] - self.ele[i,j])
 
         # transmissivity at cell interfaces: harmonic mean of the two neighbouring cells
-        # to revert to geometric mean: swap the active/commented lines below (both occurrences in this method)
         w = self.rolling_window(self.Tr0, 2)
         d = np.where(w[...,0]+w[...,1] > 0, w[...,0]+w[...,1], 1.0)  # safe denominator
         TrTmpEW = np.where(w[...,0]+w[...,1] > 0, 2*w[...,0]*w[...,1] / d, 0.0)           # harmonic mean
-        #TrTmpEW = gmean(self.rolling_window(self.Tr0, 2), -1)                              # geometric mean
         w = self.rolling_window(np.transpose(self.Tr0), 2)
         d = np.where(w[...,0]+w[...,1] > 0, w[...,0]+w[...,1], 1.0)  # safe denominator
         TrTmpNS = np.transpose(np.where(w[...,0]+w[...,1] > 0, 2*w[...,0]*w[...,1] / d, 0.0))  # harmonic mean
-        #TrTmpNS = np.transpose(gmean(self.rolling_window(np.transpose(self.Tr0), 2), -1))  # geometric mean
         self.TrW0[:,1:] = TrTmpEW
         self.TrE0[:,:-1] = TrTmpEW
         self.TrN0[1:,:] = TrTmpNS
@@ -444,7 +441,6 @@ class SoilGrid_2Dflow(object):
         self.implic = 1.0 if self.tmstep <= self.spinup_steps else 0.5
 
         maxiter = 100
-        #update_Tr_in_loop = self.tmstep > self.spinup_steps
         update_Tr_in_loop = True
 
         for it in range(maxiter):
@@ -467,11 +463,9 @@ class SoilGrid_2Dflow(object):
                 w = self.rolling_window(self.Tr1, 2)
                 d = np.where(w[...,0]+w[...,1] > 0, w[...,0]+w[...,1], 1.0)  # safe denominator
                 TrTmpEW = np.where(w[...,0]+w[...,1] > 0, 2*w[...,0]*w[...,1] / d, 0.0)           # harmonic mean
-                #TrTmpEW = gmean(self.rolling_window(self.Tr1, 2), -1)                              # geometric mean
                 w = self.rolling_window(np.transpose(self.Tr1), 2)
                 d = np.where(w[...,0]+w[...,1] > 0, w[...,0]+w[...,1], 1.0)  # safe denominator
                 TrTmpNS = np.transpose(np.where(w[...,0]+w[...,1] > 0, 2*w[...,0]*w[...,1] / d, 0.0))  # harmonic mean
-                #TrTmpNS = np.transpose(gmean(self.rolling_window(np.transpose(self.Tr1), 2), -1))  # geometric mean
                 self.TrW1[:,1:] = TrTmpEW
                 self.TrE1[:,:-1] = TrTmpEW
                 self.TrN1[1:,:] = TrTmpNS
