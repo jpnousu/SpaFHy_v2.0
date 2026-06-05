@@ -341,13 +341,6 @@ class SoilGrid_2Dflow(object):
         #                ((H - (ele + ditch_h)) / (res_sb + res_aqh + res_aqr)) * dt / self.dxy**2,
         #                0.0)
         
-        # --- deep percolation / leakage (comment block to disable) ---
-        q_leak = 0.0#0.50e-3           # deep drainage rate [m d-1]; set to 0.0 to disable
-        gwl_threshold = -0.5  # leakage only when gwl < this [m]; stops near saturation
-        min_sat_leak  = 0.05  # minimum saturated thickness above bedrock required for leakage [m]
-        land_mask = np.isfinite(np.ravel(self.cmask))
-        # ---
-
         # Boundary condition cells: lakes only for Cauchy; ditches+lakes for Dirichlet
         if self.ditch_boundary == 'Cauchy':
             bc_h = lake_h          # flat array
@@ -521,10 +514,6 @@ class SoilGrid_2Dflow(object):
                 a_d[ditch_active] += C_dd[ditch_active]
                 hs[ditch_active] += C_dd[ditch_active] * (ele[ditch_active] + ditch_h[ditch_active])
 
-            # deep percolation sink, active only when gwl < threshold and above bedrock (comment to disable)
-            leak_mask = land_mask & ((Htmp - ele) < gwl_threshold) & (Htmp > self.bedrock_h + min_sat_leak)
-            hs[leak_mask] -= q_leak * self.dxy**2
-
             # Constant-head boundary cells (lakes for Cauchy; ditches+lakes for Dirichlet)
             for k in np.where(bc_h < -eps)[0]:
                 if H_neighbours[k] > ele[k] + bc_h[k]:
@@ -640,9 +629,6 @@ class SoilGrid_2Dflow(object):
                 for did, cnt in zip(ids, counts):
                     print(f'    deep_id={int(did)}: {cnt} cells')
         
-        # deep percolation total per timestep [m] (comment to disable)
-        leakage_2d = np.where(np.isfinite(self.cmask) & (self.gwl < gwl_threshold) & (self.gwl > self.deep_z + min_sat_leak), q_leak * dt, 0.0)
-
         # lateral flow [m d-1] is calculated in two parts: one depending on previous time step
         # and other on current time step (lateral flowsee 2/2). Their weighting depends
         # on self.implic
@@ -727,7 +713,7 @@ class SoilGrid_2Dflow(object):
 
             # mass balance error [m]
             mbe = (state0 - np.reshape(S_dd,(self.rows,self.cols)) - self.Wsto_deep - qr - lateral_flow * dt
-                   - netflow_to_lake * dt - leakage_2d)
+                   - netflow_to_lake * dt)
             mbe = np.where(self.lake_h < -eps, 0.0, mbe)
 
             # outputs multiplied by cmask
@@ -747,7 +733,6 @@ class SoilGrid_2Dflow(object):
                     'water_storage': Wsto_deep_out * 1e3,  # [mm]
                     'return_flow': qr * 1e3,  # [mm]
                     'transmissivity': Tr,  # [m2 d-1]
-                    'leakage': leakage_2d * 1e3,  # [mm]
                     }
 
         else:  # Dirichlet: ditches+lakes are constant-head, netflow_to_ditch from mass balance
@@ -756,7 +741,7 @@ class SoilGrid_2Dflow(object):
             netflow_to_ditch += np.where(self.ditch_h < -eps, Wsto_before_qr - self.Wsto_deep, 0.)
 
             # mass balance error [m]
-            mbe = (state0 - self.Wsto_deep - qr - lateral_flow * dt - leakage_2d)
+            mbe = (state0 - self.Wsto_deep - qr - lateral_flow * dt)
             mbe = np.where(self.ditch_h < -eps, 0.0, mbe)
 
             # outputs multiplied by cmask
@@ -774,7 +759,6 @@ class SoilGrid_2Dflow(object):
                     'water_storage': Wsto_deep_out * 1e3,  # [mm]
                     'return_flow': qr * 1e3,  # [mm]
                     'transmissivity': Tr,  # [m2 d-1]
-                    'leakage': leakage_2d * 1e3,  # [mm]
                     }
 
         return results

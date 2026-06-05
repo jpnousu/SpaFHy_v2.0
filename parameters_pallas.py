@@ -199,7 +199,6 @@ def parameters(folder=''):
             'fdir': 'flowp_d8.asc',
             'streams': 'channels.asc',
             'lakes': 'lakes.asc',
-            # soil profile, following properties are used if spatial_soil = False
             # organic moss-humus layer
             'org_id': 'maintype_mnfi.asc', # uniform (float) OR path to grid in gispath (str)       
             'org_depth': 0.05, # depth of organic top layer (m)
