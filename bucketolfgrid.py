@@ -212,7 +212,7 @@ class BucketOLFGrid(object):
         x = np.minimum(self.Wliq_root, self.poros_root)
         x = np.maximum(x, self.wr_root)
         s = (self.poros_root - self.wr_root) / ((x - self.wr_root) + eps)
-        Psi = -1.0 / self.alpha_root * (s**(1.0 / m) - 1.0)**(1.0 / n)
+        Psi = -1. / self.alpha_root*(np.maximum(s**(1.0 / m) - 1.0, 0.0))**(1.0 / n)  # alpha defines the unit (kPa)
         return 1e-3 * Psi   # kPa to MPa
 
     def relative_evaporation(self):
