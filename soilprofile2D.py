@@ -854,13 +854,40 @@ def gwl_Wsto(z, pF, grid_step=-0.01, Ksat=None, root=False):
     GwlToC = interp1d(np.array(gwl), np.array(np.gradient(Wsto_deep)/np.gradient(gwl)), fill_value='extrapolate')
     GwlToTr = interp1d(np.array(gwl), np.array(Tr), fill_value='extrapolate')
     
-    #plt.figure(1)
-    #plt.plot(np.array(gwl), np.array(np.gradient(Wsto_deep/np.gradient(gwl))))
-    #plt.figure(2)
-    #plt.plot(np.array(gwl), np.log10(np.array(Tr)))
-    #plt.plot(np.array(gwl), np.array(Tr))
-    #plt.figure(3)
-    #plt.plot(np.array(gwl), np.array(Wsto_deep))
+    plots = False
+    if plots == True:
+        import os, time
+        os.makedirs('figs', exist_ok=True)
+        _ts = int(time.time() * 1000)
+
+        fig1, ax1 = plt.subplots()
+        ax1.plot(np.array(gwl), np.array(np.gradient(Wsto_deep)/np.gradient(gwl)))
+        ax1.set_xlabel('Groundwater level (gwl) [m]')
+        ax1.set_ylabel('dWsto/dgwl [m m$^{-1}$]')
+        ax1.set_title('Differential water capacity (C) vs. groundwater level')
+        fig1.tight_layout()
+        fig1.savefig(f'figs/gwl_vs_differential_water_capacity_{_ts}.png', dpi=150)
+        plt.close(fig1)
+
+        fig2, ax2 = plt.subplots()
+        ax2.plot(np.array(gwl), np.log10(np.array(Tr)), label='log10(Tr)')
+        ax2.plot(np.array(gwl), np.array(Tr), label='Tr')
+        ax2.set_xlabel('Groundwater level (gwl) [m]')
+        ax2.set_ylabel('Transmissivity [m$^2$ d$^{-1}$]')
+        ax2.set_title('Transmissivity vs. groundwater level')
+        ax2.legend()
+        fig2.tight_layout()
+        fig2.savefig(f'figs/gwl_vs_transmissivity_{_ts}.png', dpi=150)
+        plt.close(fig2)
+
+        fig3, ax3 = plt.subplots()
+        ax3.plot(np.array(gwl), np.array(Wsto_deep))
+        ax3.set_xlabel('Groundwater level (gwl) [m]')
+        ax3.set_ylabel('Water storage (Wsto) [m]')
+        ax3.set_title('Water storage vs. groundwater level')
+        fig3.tight_layout()
+        fig3.savefig(f'figs/gwl_vs_water_storage_{_ts}.png', dpi=150)
+        plt.close(fig3)
 
     return {'to_gwl': WstoToGwl, 'to_wsto': GwlToWsto, 'to_C': GwlToC, 'to_Tr': GwlToTr}
 
