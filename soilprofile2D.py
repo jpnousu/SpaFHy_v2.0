@@ -324,22 +324,6 @@ class SoilGrid_2Dflow(object):
             C_dd = np.zeros_like(H)
         else:
             C_dd = np.zeros_like(H)
-
-        # testing Di Ciacci et al., 2019
-        #M = 0.1 # thickness of channel bed [m]
-        #Ksb = 1E-03 * 86400. # hydraulic conductivity of channel bed [m/d]
-        #Khor = 1E-05 * 86400. # aquifer horizontal hydraulic conductivity [m/d]
-        #Kver = 1E-06 * 86400. # aquifer vertical hydraulic conductivity [m/d]
-        #Keq = np.sqrt(Khor*Kver) # aquifer radial hydraulic conductivity [m/d]
-        #D = 5. # thickness of the aquifer [m]
-        #u = ditch_w * 1.2 # wetted perimeter length [m]
-        #res_sb = M / Ksb * ditch_w * ditch_l
-        #res_aqh = (3 * ditch_d * self.dxy - self.dxy**2) / (24 * ditch_d * Khor * D * ditch_l)
-        #res_aqr = (np.log(D/u) / (np.pi * Keq) * ditch_l)
-        
-        #S_dd = np.where((ditch_h < -eps) & (ele + ditch_h < H), 
-        #                ((H - (ele + ditch_h)) / (res_sb + res_aqh + res_aqr)) * dt / self.dxy**2,
-        #                0.0)
         
         # Boundary condition cells: lakes only for Cauchy; ditches+lakes for Dirichlet
         if self.ditch_boundary == 'Cauchy':
