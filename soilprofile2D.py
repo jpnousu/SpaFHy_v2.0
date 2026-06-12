@@ -822,7 +822,7 @@ def gwl_Wsto(z, pF, grid_step=-0.01, Ksat=None, root=False):
     GwlToC = interp1d(np.array(gwl), np.array(np.gradient(Wsto_deep)/np.gradient(gwl)), fill_value='extrapolate')
     GwlToTr = interp1d(np.array(gwl), np.array(Tr), fill_value='extrapolate')
     
-    plots = False
+    plots = True
     if plots == True:
         import os, time
         os.makedirs('figs', exist_ok=True)
@@ -838,7 +838,7 @@ def gwl_Wsto(z, pF, grid_step=-0.01, Ksat=None, root=False):
         plt.close(fig1)
 
         fig2, ax2 = plt.subplots()
-        ax2.plot(np.array(gwl), np.log10(np.array(Tr)), label='log10(Tr)')
+        #ax2.plot(np.array(gwl), np.log10(np.array(Tr)), label='log10(Tr)')
         ax2.plot(np.array(gwl), np.array(Tr), label='Tr')
         ax2.set_xlabel('Groundwater level (gwl) [m]')
         ax2.set_ylabel('Transmissivity [m$^2$ d$^{-1}$]')

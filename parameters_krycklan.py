@@ -7,12 +7,16 @@ PARAMETERS
 import pathlib
 import time
 
+reso = 20
+streams = 'channels'
+#streams = '5haStreams'
+
 def parameters(folder=''):
 
     pgen = {'description': 'final_run',  # description written in result file
             'simtype': '2D', # 1D, TOP, 2D,
             'start_date': '2013-01-01',  # '2011-01-01', for tests: '2020-01-01'
-            'end_date': '2015-09-01', # 2017-09-01,
+            'end_date': '2023-12-31', # 2017-09-01,
             #'spinup_file': r'F:\SpaFHy_2D_2021/testcase_input_202304051037_spinup.nc',
             'spinup_end': '2014-09-01',  # '2015-09-01', for tests: '2020-09-01' results after this are saved in result file
             'dt': 86400.0,
@@ -28,14 +32,14 @@ def parameters(folder=''):
             'spatial_forcing': False,  # if False uses forcing from forcing file with pgen['forcing_id'] and cpy['loc']
             'spatial_radiation_file': None, # if spatial radiation file, otherwise None
             # else needs Ncoord.dat, Ecoord.dat, forcing_id.dat
-            'gis_folder': str(pathlib.Path(folder+r'/gis/160m')),
+            'gis_folder': str(pathlib.Path(folder+f'/gis/{reso}m')),
             'forcing_file': str(pathlib.Path(folder+r'/forcing/FORCING.csv')),
             'forcing_id': 0,  # used if spatial_forcing == False
             'ncf_file': time.strftime('%Y%m%d%H%M') + r'.nc',  # timestamp to result file name to avoid saving problem when running repeatedly
             'cmask' : 'catchment_mask.asc',
             'mask': None, # 'cmask/streams', 'cmask', 'streams', None
             #'results_folder': r'/scratch/project_2000908/nousu/SpaFHy_RESULTS',
-            'results_folder': str(pathlib.Path(folder+r'/results/final_5_25/cha_160m')),
+            'results_folder': str(pathlib.Path(folder+f'/results/reso_12_6_2026/{streams}_{reso}m')),
             'save_interval': 366, # interval for writing results to file (decreases need for memory during computation)
             'variables':[ # list of output variables (rows can be commented away if not all variables are of interest)
                     #['parameters_lai_conif', 'leaf area index of conifers [m2 m-2]'],
@@ -206,7 +210,7 @@ def parameters(folder=''):
             # overlandflow model
             'flowacc': 'flow_accumulation_d8.asc',
             'fdir': 'flowp_d8.asc',
-            'streams': 'channels.asc',
+            'streams': f'{streams}.asc',
             'lakes': 'lake_mask.asc',
             # organic moss-humus layer
             'org_id': 'soil.asc', # uniform (float) OR path to grid in gispath (str)       
@@ -216,7 +220,7 @@ def parameters(folder=''):
             'org_rw': 0.15, # critical vol. moisture content (-) for decreasing phase in Ef
             'org_ksat': 1E-04, # root zone hydraulic conductivity
             'org_beta': 6.0, # 
-            'maxpond': 0.05, # max ponding depth (m)
+            'maxpond': 0.3, # max ponding depth (m)
             # rootzone layer
             'root_id': 'soil.asc', # uniform (float) OR path to grid in gispath (str)     
             'root_depth': 0.3, # depth of rootzone layer (m)
@@ -239,10 +243,10 @@ def parameters(folder=''):
             # deep soil profile, following properties are used if spatial_deep = False
             'deep_id': 'soil.asc', # uniform (float) OR path to grid in gispath (str)
             'elevation': 'processed_dem.asc', # uniform (float) OR path to grid in gispath (str) 
-            'streams': 'channels.asc',
-            'stream_distance': 'channels_distance.asc', # average distance to stream
-            'stream_length': 'channels_length.asc', # total stream length
-            'stream_width': 'channels_width.asc', # average stream width
+            'streams': f'{streams}.asc',
+            'stream_distance': f'{streams}_distance.asc', # average distance to stream
+            'stream_length': f'{streams}_length.asc', # total stream length
+            'stream_width': f'{streams}_width.asc', # average stream width
             'lakes': 'lake_mask.asc',
             #'deep_z': 'soildepth.asc',
             'deep_z': -10.0,
@@ -253,7 +257,7 @@ def parameters(folder=''):
             'deep_ksat': 1E-05,
             # initial states
             'ground_water_level': -1.0,  # groundwater depth [m]
-            'stream_depth': 'channels_depth.asc', #  # initial stream water level relative to ground surface (currently not dynamic) [m]
+            'stream_depth': f'{streams}_depth.asc', #  # initial stream water level relative to ground surface (currently not dynamic) [m]
             'lake_depth': -1.0  # initial lake water level relative to ground surface (currently not dynamic) [m]
             }
 
@@ -283,13 +287,153 @@ def auxiliary_grids():
     """
     grids = {
             'cmask':    'catchment_mask.asc',
-            'streams':  'channels.asc',
+            'streams':  f'{streams}.asc',
             'lakes':    'lake_mask.asc'
             }
     return grids
 
+def deep_properties():
+    """
+    Properties of soil profiles generated from exponential conductivity parameters.
+    Note z is elevation of lower boundary of layer (soil surface at 0.0).
+    """
+    deepp = {
+        'Postglacial_sand': {
+            'deep_id': 1,
+            'deep_z': [-0.1, -0.2, -0.3, -0.4, -0.5, -0.6, -0.7, -0.8, -0.9, -1.0, -1.2, -1.4, -1.6, -1.8, -2.0, -2.5, -3.0, -3.5, -4.0, -5.0, -6.0, -7.0, -8.0, -9.0, -10.0],
+            'pF': {
+                'ThetaS': [0.41] * 25,
+                'ThetaR': [0.05] * 25,
+                'alpha': [0.024] * 25,
+                'n': [1.2] * 25,
+            },
+            'deep_ksat': [4.53E-05, 4.11E-05, 3.73E-05, 3.38E-05, 3.07E-05, 2.79E-05, 2.53E-05, 2.3E-05, 2.09E-05, 1.9E-05, 1.58E-05, 1.31E-05, 1.09E-05, 9.1E-06, 7.63E-06, 5.02E-06, 3.44E-06, 2.48E-06, 1.9E-06, 1.33E-06, 1.12E-06, 1.04E-06, 1.02E-06, 1.01E-06, 1E-06],
+            'stream_ksat': 4.53E-05,
+        },
+        'Glaciofluvial_sediment': {
+            'deep_id': 2,
+            'deep_z': [-0.1, -0.2, -0.3, -0.4, -0.5, -0.6, -0.7, -0.8, -0.9, -1.0, -1.2, -1.4, -1.6, -1.8, -2.0, -2.5, -3.0, -3.5, -4.0, -5.0, -6.0, -7.0, -8.0, -9.0, -10.0],
+            'pF': {
+                'ThetaS': [0.41] * 25,
+                'ThetaR': [0.05] * 25,
+                'alpha': [0.024] * 25,
+                'n': [1.2] * 25,
+            },
+            'deep_ksat': [4.53E-05, 4.11E-05, 3.73E-05, 3.38E-05, 3.07E-05, 2.79E-05, 2.53E-05, 2.3E-05, 2.09E-05, 1.9E-05, 1.58E-05, 1.31E-05, 1.09E-05, 9.1E-06, 7.63E-06, 5.02E-06, 3.44E-06, 2.48E-06, 1.9E-06, 1.33E-06, 1.12E-06, 1.04E-06, 1.02E-06, 1.01E-06, 1E-06],
+            'stream_ksat': 4.53E-05,
+        },
+        'Peat': {
+            'deep_id': 3,
+            'deep_z': [-0.1, -0.2, -0.3, -0.4, -0.5, -0.6, -0.7, -0.8, -0.9, -1.0, -1.2, -1.4, -1.6, -1.8, -2.0, -2.5, -3.0, -3.5, -4.0, -5.0, -6.0, -7.0, -8.0, -9.0, -10.0],
+            'pF': {
+                'ThetaS': [0.89] * 25,
+                'ThetaR': [0.196] * 25,
+                'alpha': [0.072] * 25,
+                'n': [1.255] * 25,
+            },
+            'deep_ksat': [8.62E-05, 7.43E-05, 6.41E-05, 5.53E-05, 4.78E-05, 4.13E-05, 3.56E-05, 3.08E-05, 2.67E-05, 2.31E-05, 1.74E-05, 1.31E-05, 9.98E-06, 7.65E-06, 5.93E-06, 3.33E-06, 2.1E-06, 1.52E-06, 1.25E-06, 1.05E-06, 1.01E-06, 1E-06, 1E-06, 1E-06, 1E-06],
+            'stream_ksat': 8.62E-05,
+        },
+        'Postglacial_sand_gravel': {
+            'deep_id': 4,
+            'deep_z': [-0.1, -0.2, -0.3, -0.4, -0.5, -0.6, -0.7, -0.8, -0.9, -1.0, -1.2, -1.4, -1.6, -1.8, -2.0, -2.5, -3.0, -3.5, -4.0, -5.0, -6.0, -7.0, -8.0, -9.0, -10.0],
+            'pF': {
+                'ThetaS': [0.41] * 25,
+                'ThetaR': [0.05] * 25,
+                'alpha': [0.024] * 25,
+                'n': [1.2] * 25,
+            },
+            'deep_ksat': [2.72E-05, 2.47E-05, 2.25E-05, 2.04E-05, 1.86E-05, 1.69E-05, 1.54E-05, 1.4E-05, 1.28E-05, 1.17E-05, 9.73E-06, 8.15E-06, 6.85E-06, 5.79E-06, 4.92E-06, 3.38E-06, 2.44E-06, 1.88E-06, 1.53E-06, 1.2E-06, 1.07E-06, 1.03E-06, 1.01E-06, 1E-06, 1E-06],
+            'stream_ksat': 2.72E-05,
+        },
+        'Clay_silt': {
+            'deep_id': 5,
+            'deep_z': [-0.1, -0.2, -0.3, -0.4, -0.5, -0.6, -0.7, -0.8, -0.9, -1.0, -1.2, -1.4, -1.6, -1.8, -2.0, -2.5, -3.0, -3.5, -4.0, -5.0, -6.0, -7.0, -8.0, -9.0, -10.0],
+            'pF': {
+                'ThetaS': [0.6] * 25,
+                'ThetaR': [0.07] * 25,
+                'alpha': [0.018] * 25,
+                'n': [1.16] * 25,
+            },
+            'deep_ksat': [9.56E-09, 9.14E-09, 8.75E-09, 8.37E-09, 8.01E-09, 7.67E-09, 7.34E-09, 7.03E-09, 6.74E-09, 6.46E-09, 5.94E-09, 5.47E-09, 5.04E-09, 4.66E-09, 4.31E-09, 3.58E-09, 3.01E-09, 2.56E-09, 2.22E-09, 1.74E-09, 1.45E-09, 1.27E-09, 1.16E-09, 1.1E-09, 1.06E-09],
+            'stream_ksat': 9.56E-09,
+        },
+        'Washed_sediment_gravel_boulders': {
+            'deep_id': 6,
+            'deep_z': [-0.1, -0.2, -0.3, -0.4, -0.5, -0.6, -0.7, -0.8, -0.9, -1.0, -1.2, -1.4, -1.6, -1.8, -2.0, -2.5, -3.0, -3.5, -4.0, -5.0, -6.0, -7.0, -8.0, -9.0, -10.0],
+            'pF': {
+                'ThetaS': [0.41] * 25,
+                'ThetaR': [0.05] * 25,
+                'alpha': [0.024] * 25,
+                'n': [1.2] * 25,
+            },
+            'deep_ksat': [4.53E-05, 4.11E-05, 3.73E-05, 3.38E-05, 3.07E-05, 2.79E-05, 2.53E-05, 2.3E-05, 2.09E-05, 1.9E-05, 1.58E-05, 1.31E-05, 1.09E-05, 9.1E-06, 7.63E-06, 5.02E-06, 3.44E-06, 2.48E-06, 1.9E-06, 1.33E-06, 1.12E-06, 1.04E-06, 1.02E-06, 1.01E-06, 1E-06],
+            'stream_ksat': 4.53E-05,
+        },
+        'Water': {
+            'deep_id': 7,
+            'deep_z': [-0.1, -0.2, -0.3, -0.4, -0.5, -0.6, -0.7, -0.8, -0.9, -1.0, -1.2, -1.4, -1.6, -1.8, -2.0, -2.5, -3.0, -3.5, -4.0, -5.0, -6.0, -7.0, -8.0, -9.0, -10.0],
+            'pF': {
+                'ThetaS': [0.43] * 25,
+                'ThetaR': [0.05] * 25,
+                'alpha': [0.024] * 25,
+                'n': [1.2] * 25,
+            },
+            'deep_ksat': [9.56E-09, 9.14E-09, 8.75E-09, 8.37E-09, 8.01E-09, 7.67E-09, 7.34E-09, 7.03E-09, 6.74E-09, 6.46E-09, 5.94E-09, 5.47E-09, 5.04E-09, 4.66E-09, 4.31E-09, 3.58E-09, 3.01E-09, 2.56E-09, 2.22E-09, 1.74E-09, 1.45E-09, 1.27E-09, 1.16E-09, 1.1E-09, 1.06E-09],
+            'stream_ksat': 9.56E-09,
+        },
+        'Moraine': {
+            'deep_id': 8,
+            'deep_z': [-0.1, -0.2, -0.3, -0.4, -0.5, -0.6, -0.7, -0.8, -0.9, -1.0, -1.2, -1.4, -1.6, -1.8, -2.0, -2.5, -3.0, -3.5, -4.0, -5.0, -6.0, -7.0, -8.0, -9.0, -10.0],
+            'pF': {
+                'ThetaS': [0.41] * 25,
+                'ThetaR': [0.05] * 25,
+                'alpha': [0.024] * 25,
+                'n': [1.2] * 25,
+            },
+            'deep_ksat': [9.14E-06, 8.37E-06, 7.67E-06, 7.03E-06, 6.46E-06, 5.94E-06, 5.47E-06, 5.04E-06, 4.66E-06, 4.31E-06, 3.71E-06, 3.22E-06, 2.82E-06, 2.49E-06, 2.22E-06, 1.74E-06, 1.45E-06, 1.27E-06, 1.16E-06, 1.06E-06, 1.02E-06, 1.01E-06, 1E-06, 1E-06, 1E-06],
+            'stream_ksat': 9.14E-06,
+        },
+        'Fill': {
+            'deep_id': 9,
+            'deep_z': [-0.1, -0.2, -0.3, -0.4, -0.5, -0.6, -0.7, -0.8, -0.9, -1.0, -1.2, -1.4, -1.6, -1.8, -2.0, -2.5, -3.0, -3.5, -4.0, -5.0, -6.0, -7.0, -8.0, -9.0, -10.0],
+            'pF': {
+                'ThetaS': [0.41] * 25,
+                'ThetaR': [0.05] * 25,
+                'alpha': [0.024] * 25,
+                'n': [1.2] * 25,
+            },
+            'deep_ksat': [9.06E-06, 8.21E-06, 7.43E-06, 6.74E-06, 6.1E-06, 5.53E-06, 5.02E-06, 4.55E-06, 4.13E-06, 3.74E-06, 3.08E-06, 2.54E-06, 2.1E-06, 1.74E-06, 1.44E-06, 9.13E-07, 5.93E-07, 3.99E-07, 2.81E-07, 1.67E-07, 1.25E-07, 1.09E-07, 1.03E-07, 1.01E-07, 1E-07],
+            'stream_ksat': 9.06E-06,
+        },
+        'Bedrock': {
+            'deep_id': 10,
+            'deep_z': [-0.1, -0.2, -0.3, -0.4, -0.5, -0.6, -0.7, -0.8, -0.9, -1.0, -1.2, -1.4, -1.6, -1.8, -2.0, -2.5, -3.0, -3.5, -4.0, -5.0, -6.0, -7.0, -8.0, -9.0, -10.0],
+            'pF': {
+                'ThetaS': [0.43] * 25,
+                'ThetaR': [0.05] * 25,
+                'alpha': [0.024] * 25,
+                'n': [1.2] * 25,
+            },
+            'deep_ksat': [7.41E-07, 5.49E-07, 4.07E-07, 3.01E-07, 2.23E-07, 1.65E-07, 1.23E-07, 9.08E-08, 6.73E-08, 4.99E-08, 2.74E-08, 1.51E-08, 8.33E-09, 4.62E-09, 2.58E-09, 6.53E-10, 2.23E-10, 1.28E-10, 1.06E-10, 1E-10, 1E-10, 1E-10, 1E-10, 1E-10, 1E-10],
+            'stream_ksat': 7.41E-07,
+        },
+        'Fluvial_sediment_sand': {
+            'deep_id': 11,
+            'deep_z': [-0.1, -0.2, -0.3, -0.4, -0.5, -0.6, -0.7, -0.8, -0.9, -1.0, -1.2, -1.4, -1.6, -1.8, -2.0, -2.5, -3.0, -3.5, -4.0, -5.0, -6.0, -7.0, -8.0, -9.0, -10.0],
+            'pF': {
+                'ThetaS': [0.41] * 25,
+                'ThetaR': [0.05] * 25,
+                'alpha': [0.024] * 25,
+                'n': [1.2] * 25,
+            },
+            'deep_ksat': [4.32E-05, 3.73E-05, 3.22E-05, 2.79E-05, 2.41E-05, 2.09E-05, 1.81E-05, 1.58E-05, 1.37E-05, 1.19E-05, 9.1E-06, 7E-06, 5.45E-06, 4.29E-06, 3.44E-06, 2.15E-06, 1.54E-06, 1.26E-06, 1.12E-06, 1.03E-06, 1.01E-06, 1E-06, 1E-06, 1E-06, 1E-06],
+            'stream_ksat': 4.32E-05,
+        },
+    }
+    return deepp
 
-def deep_properties(): # this is meant to be run with soildepth.asc
+def deep_properties_bu(): # this is meant to be run with soildepth.asc
     """
     Properties of soil profiles.
     Note z is elevation of lower boundary of layer (soil surface at 0.0),
@@ -394,9 +538,8 @@ def deep_properties(): # this is meant to be run with soildepth.asc
                 'alpha': [0.024] * 5,
                 'n': [1.2] * 5
             },
-            #'deep_ksat': [1E-5, 2E-6, 1E-6, 2E-7, 1E-7],
-            'deep_ksat': [1E-6, 1E-6, 1E-6, 1E-6, 2E-6], # test
-            #'deep_ksat': [1E-5, 5E-6, 2E-6, 2E-6, 2E-6], # 
+            #'deep_ksat': [1E-5, 1E-6, 1E-6, 1E-6, 2E-6], # test
+            'deep_ksat': [5E-5, 5E-5, 1E-5, 5E-6, 1E-6], # 
             'stream_ksat': 5E-05,
         },
         'Fill': { # Till: Sterte et al. 2018
