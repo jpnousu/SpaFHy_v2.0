@@ -92,7 +92,10 @@ class SoilGrid_2Dflow(object):
             self.ditch_w = spara['stream_width']   # average stream width
             self.ditch_d = spara['stream_distance']  # average distance to stream
             self.ditch_d = np.where(self.ditch_d > 0.0, self.ditch_d, 1.0)  # avoid division by zero in S_dd
-
+            self.stream_ksat = spara.get('stream_ksat', 1E-05) * 86400.  # [m d-1]
+            # 'Tr': use Tr(gwl)/sat_thickness as effective Ksat (depth-dependent)
+            # 'stream_ksat': use fixed surface Ksat (original behaviour)
+            self.cauchy_Keff = spara.get('cauchy_Keff', 'Tr')
 
         # interpolated functions for soil column groundwater depth vs. water storage, transmissivity etc.
         self.wsto_to_gwl = spara['wtso_to_gwl']
@@ -319,6 +322,7 @@ class SoilGrid_2Dflow(object):
             ditch_l = np.ravel(self.ditch_l)
             ditch_w = np.ravel(self.ditch_w)
             ditch_d = np.ravel(self.ditch_d)
+            stream_ksat = np.ravel(self.stream_ksat)
             # Dupuit-Forchheimer for all drainage cells; C_dd updated each iteration inside loop (head-dependent)
             C_dd = np.zeros_like(H)
         else:
@@ -433,22 +437,6 @@ class SoilGrid_2Dflow(object):
         # implicit solution for spinup, crank-nicholson afterwards
         self.implic = 1.0 if self.tmstep <= self.spinup_steps else 0.5
 
-        # Precompute transmissivity at ditch water level (constant throughout iteration)
-        # T(ditch_h) is the transmissivity of the saturated zone below the ditch level.
-        # C_dd = (T(gwl) - T(ditch_h)) * L / d  captures only the slice above the ditch.
-        if self.ditch_boundary == 'Cauchy':
-            Tr_ditch_2d = np.zeros_like(self.Tr0)
-            if not self.z_from_gis:
-                for key, value in self.gwl_to_Tr.items():
-                    mask = (self.soiltype == key) & (self.ditch_h < -eps)
-                    Tr_ditch_2d[mask] = value(self.ditch_h[mask])
-            elif self.z_from_gis:
-                for i in range(self.gwl_to_Tr.shape[0]):
-                    for j in range(self.gwl_to_Tr.shape[1]):
-                        if np.isfinite(self.cmask[i, j]) and self.ditch_h[i, j] < -eps:
-                            Tr_ditch_2d[i, j] = self.gwl_to_Tr[i, j](self.ditch_h[i, j])
-            Tr_ditch = np.ravel(Tr_ditch_2d)
-
         maxiter = 100
         update_Tr_in_loop = True
 
@@ -539,11 +527,11 @@ class SoilGrid_2Dflow(object):
                   + (1.-self.implic) * (TrE0*HE) + (1.-self.implic) * (TrS0*HS))
 
             # implicit Cauchy drainage: conductance added to diagonal, threshold contribution to RHS
-            # C_dd = (T(gwl) - T(ditch_h)) * L / d  [m2 d-1]
-            # integrates K(z) over the saturated slice above the ditch level
+            # Dupuit-Forchheimer for all drainage cells (streams and ditches)
             if self.ditch_boundary == 'Cauchy':
-                Tr1_flat = np.ravel(self.Tr1)
-                C_dd = np.maximum(0.0, Tr1_flat - Tr_ditch) * ditch_l / ditch_d
+                sat_thickness = np.maximum(0.0, Htmp - (ele + ditch_h))
+                C_dd = stream_ksat * ditch_l * sat_thickness / ditch_d
+                #C_dd = C_dd*100
                 ditch_active = (ditch_h < -eps) & (Htmp > ele + ditch_h)
                 a_d[ditch_active] += C_dd[ditch_active]
                 hs[ditch_active] += C_dd[ditch_active] * (ele[ditch_active] + ditch_h[ditch_active])
@@ -641,10 +629,8 @@ class SoilGrid_2Dflow(object):
         # recompute S_dd [m] from converged head for mass balance and output
         if self.ditch_boundary == 'Cauchy':
             H_conv = np.ravel(Htmp)
-            Tr1_flat = np.ravel(self.Tr1)
-            C_dd_conv = np.maximum(0.0, Tr1_flat - Tr_ditch) * ditch_l / ditch_d
             S_dd = np.where((ditch_h < -eps) & (H_conv > ele + ditch_h),
-                            C_dd_conv * (H_conv - (ele + ditch_h)) * dt / self.dxy**2,
+                            C_dd * (H_conv - (ele + ditch_h)) * dt / self.dxy**2,
                             0.0)
         else:
             S_dd = np.zeros(self.n)

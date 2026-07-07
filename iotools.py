@@ -1632,7 +1632,7 @@ def rw_FMI_files(sourcefiles, out_path, plot=False):
     return fmi
 
 
-def stitch_result_nc_files(root_directory, output_file, plot=False):
+def stitch_result_nc_files(root_directory, output_file, plot=False, start_date=None, end_date=None):
     """
     Merges multiple sub-catchment NetCDF result files into a single file.
 
@@ -1649,9 +1649,15 @@ def stitch_result_nc_files(root_directory, output_file, plot=False):
     
     import xarray as xr
 
+    def apply_time_slice(ds):
+        if start_date is not None or end_date is not None:
+            return ds.sel(time=slice(start_date, end_date))
+        return ds
+    
     def extract_lats_lons(nc_file):
         """Extracts latitudes and longitudes from a NetCDF file."""
         with xr.open_dataset(nc_file) as ds:
+            ds = apply_time_slice(ds)
             lat = ds['lat'].values
             lon = ds['lon'].values
             cellsize = np.float32(np.abs(ds['lat'][1]-ds['lat'][0]))
@@ -1660,6 +1666,7 @@ def stitch_result_nc_files(root_directory, output_file, plot=False):
     def extract_time_and_variables(nc_file):
         """Extracts time dimensions and data variable names from the first NetCDF file."""
         with xr.open_dataset(nc_file) as ds:
+            ds = apply_time_slice(ds)
             time = ds['time'].values
             variables = {var: ds[var].dims for var in ds.data_vars.keys()}
         return time, variables
@@ -1704,6 +1711,7 @@ def stitch_result_nc_files(root_directory, output_file, plot=False):
                 if file.endswith(".nc"):
                     nc_file_path = os.path.join(dirpath, file)
                     with xr.open_dataset(nc_file_path) as ds:
+                        ds = apply_time_slice(ds)
                         for var in ds.data_vars.keys():
                             var_dims = ds[var].dims
 
@@ -1748,7 +1756,8 @@ def stitch_result_nc_files(root_directory, output_file, plot=False):
                 result_path = os.path.join(dirpath, file)
 
                 # Read the result dataset
-                result_ds = xr.open_dataset(result_path)
+                #result_ds = xr.open_dataset(result_path)
+                result_ds = apply_time_slice(xr.open_dataset(result_path))
                 if plot:
                     plt.figure(i)
                 i += 1
