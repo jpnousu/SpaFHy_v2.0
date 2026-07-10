@@ -39,7 +39,7 @@ def parameters(folder=''):
             'cmask' : 'catchment_mask.asc',
             'mask': None, # 'cmask/streams', 'cmask', 'streams', None
             #'results_folder': r'/scratch/project_2000908/nousu/SpaFHy_RESULTS',
-            'results_folder': str(pathlib.Path(folder+f'/results/simulations_6_7_2026/{streams}_{reso}m')),
+            'results_folder': str(pathlib.Path(folder+f'/results/simulations_10_7_2026/{streams}_{reso}m')),
             'save_interval': 366, # interval for writing results to file (decreases need for memory during computation)
             'variables':[ # list of output variables (rows can be commented away if not all variables are of interest)
                     #['parameters_lai_conif', 'leaf area index of conifers [m2 m-2]'],
@@ -223,7 +223,7 @@ def parameters(folder=''):
             'org_rw': 0.15, # critical vol. moisture content (-) for decreasing phase in Ef
             'org_ksat': 1E-04, # root zone hydraulic conductivity
             'org_beta': 6.0, # 
-            'maxpond': 0.05, # max ponding depth (m)
+            'maxpond': 0.0, # max ponding depth (m)
             # rootzone layer
             'root_id': 'soil_grouped.asc', # uniform (float) OR path to grid in gispath (str)     
             'root_depth': 0.3, # depth of rootzone layer (m)
@@ -310,7 +310,7 @@ def deep_properties():
                 'alpha': [0.024] * 25,
                 'n': [1.2] * 25,
             },
-            'deep_ksat': [7.41E-07, 5.49E-07, 4.07E-07, 3.02E-07, 2.24E-07, 1.66E-07, 1.23E-07, 9.16E-08, 6.81E-08, 5.07E-08, 2.83E-08, 1.6E-08, 9.22E-09, 5.51E-09, 3.48E-09, 1.55E-09, 1.12E-09, 1.03E-09, 1.01E-09, 1E-09, 1E-09, 1E-09, 1E-09, 1E-09, 1E-09],
+            'deep_ksat': [7.67E-07, 5.94E-07, 4.66E-07, 3.71E-07, 3.01E-07, 2.49E-07, 2.1E-07, 1.82E-07, 1.6E-07, 1.45E-07, 1.25E-07, 1.13E-07, 1.07E-07, 1.04E-07, 1.02E-07, 1E-07, 1E-07, 1E-07, 1E-07, 1E-07, 1E-07, 1E-07, 1E-07, 1E-07, 1E-07],
         },
         'Peat': {
             'deep_id': 2,
@@ -321,7 +321,7 @@ def deep_properties():
                 'alpha': [0.072] * 25,
                 'n': [1.255] * 25,
             },
-            'deep_ksat': [7.41E-05, 5.49E-05, 4.07E-05, 3.01E-05, 2.23E-05, 1.65E-05, 1.23E-05, 9.08E-06, 6.73E-06, 4.99E-06, 2.74E-06, 1.51E-06, 8.33E-07, 4.62E-07, 2.58E-07, 6.53E-08, 2.23E-08, 1.28E-08, 1.06E-08, 1E-08, 1E-08, 1E-08, 1E-08, 1E-08, 1E-08],
+            'deep_ksat': [7.41E-05, 5.49E-05, 4.07E-05, 3.02E-05, 2.24E-05, 1.66E-05, 1.23E-05, 9.16E-06, 6.81E-06, 5.07E-06, 2.83E-06, 1.6E-06, 9.22E-07, 5.51E-07, 3.48E-07, 1.55E-07, 1.12E-07, 1.03E-07, 1.01E-07, 1E-07, 1E-07, 1E-07, 1E-07, 1E-07, 1E-07],
         },
         'Fine': {
             'deep_id': 3,
@@ -332,7 +332,7 @@ def deep_properties():
                 'alpha': [0.018] * 25,
                 'n': [1.16] * 25,
             },
-            'deep_ksat': [8.21E-07, 6.74E-07, 5.53E-07, 4.55E-07, 3.74E-07, 3.08E-07, 2.54E-07, 2.1E-07, 1.74E-07, 1.44E-07, 9.98E-08, 7.02E-08, 5.04E-08, 3.71E-08, 2.81E-08, 1.67E-08, 1.25E-08, 1.09E-08, 1.03E-08, 1E-08, 1E-08, 1E-08, 1E-08, 1E-08, 1E-08],
+            'deep_ksat': [4.11E-06, 3.38E-06, 2.79E-06, 2.3E-06, 1.9E-06, 1.58E-06, 1.31E-06, 1.09E-06, 9.1E-07, 7.63E-07, 5.45E-07, 3.98E-07, 3E-07, 2.34E-07, 1.9E-07, 1.33E-07, 1.12E-07, 1.04E-07, 1.02E-07, 1E-07, 1E-07, 1E-07, 1E-07, 1E-07, 1E-07],
         },
         'Medium': {
             'deep_id': 4,
@@ -343,7 +343,7 @@ def deep_properties():
                 'alpha': [0.024] * 25,
                 'n': [1.2] * 25,
             },
-            'deep_ksat': [3.7E-04, 2.74E-04, 2.03E-04, 1.51E-04, 1.12E-04, 8.27E-05, 6.13E-05, 4.54E-05, 3.37E-05, 2.5E-05, 1.38E-05, 7.6E-06, 4.21E-06, 2.36E-06, 1.34E-06, 3.76E-07, 1.62E-07, 1.14E-07, 1.03E-07, 1E-07, 1E-07, 1E-07, 1E-07, 1E-07, 1E-07],
+            'deep_ksat': [2.74E-04, 1.51E-04, 8.27E-05, 4.54E-05, 2.5E-05, 1.38E-05, 7.6E-06, 4.21E-06, 2.36E-06, 1.34E-06, 4.73E-07, 2.12E-07, 1.34E-07, 1.1E-07, 1.03E-07, 1E-07, 1E-07, 1E-07, 1E-07, 1E-07, 1E-07, 1E-07, 1E-07, 1E-07, 1E-07],
         },
         'Coarse': {
             'deep_id': 5,
@@ -354,7 +354,7 @@ def deep_properties():
                 'alpha': [0.024] * 25,
                 'n': [1.2] * 25,
             },
-            'deep_ksat': [7.43E-05, 5.53E-05, 4.13E-05, 3.08E-05, 2.31E-05, 1.74E-05, 1.31E-05, 9.98E-06, 7.65E-06, 5.93E-06, 3.71E-06, 2.48E-06, 1.81E-06, 1.45E-06, 1.25E-06, 1.05E-06, 1.01E-06, 1E-06, 1E-06, 1E-06, 1E-06, 1E-06, 1E-06, 1E-06, 1E-06],
+            'deep_ksat': [3.35E-04, 2.25E-04, 1.51E-04, 1.02E-04, 6.85E-05, 4.63E-05, 3.13E-05, 2.13E-05, 1.46E-05, 1.01E-05, 5.11E-06, 2.85E-06, 1.83E-06, 1.37E-06, 1.17E-06, 1.02E-06, 1E-06, 1E-06, 1E-06, 1E-06, 1E-06, 1E-06, 1E-06, 1E-06, 1E-06],
         },
     }
     return deepp

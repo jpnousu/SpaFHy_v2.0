@@ -89,10 +89,8 @@ class SoilGrid_2Dflow(object):
         if self.ditch_boundary == 'Cauchy':
             # stream geometry needed for Cauchy flux (currently np.nan for non-streams)
             self.ditch_l = spara['stream_length']  # total stream length
-            self.ditch_w = spara['stream_width']   # average stream width
             self.ditch_d = spara['stream_distance']  # average distance to stream
             self.ditch_d = np.where(self.ditch_d > 0.0, self.ditch_d, 1.0)  # avoid division by zero in S_dd
-
 
         # interpolated functions for soil column groundwater depth vs. water storage, transmissivity etc.
         self.wsto_to_gwl = spara['wtso_to_gwl']
@@ -107,9 +105,9 @@ class SoilGrid_2Dflow(object):
         self.ditch_h[~np.isfinite(spara['deep_id'])] = 0.
 
         if self.ditch_boundary == 'Cauchy':
-            # deactivate ditch cells with incomplete stream geometry (missing length, width or distance)
+            # deactivate ditch cells with incomplete stream geometry (missing length or distance)
             # to avoid NaN in S_dd computation
-            ditch_incomplete = (self.ditch_h < -1e-6) & (np.isnan(self.ditch_l) | np.isnan(self.ditch_w) | np.isnan(self.ditch_d))
+            ditch_incomplete = (self.ditch_h < -1e-6) & (np.isnan(self.ditch_l) | np.isnan(self.ditch_d))
             self.ditch_h[ditch_incomplete] = 0.0
             if np.any(ditch_incomplete):
                 print(f'  WARNING: {np.sum(ditch_incomplete)} ditch cell(s) deactivated due to incomplete stream geometry')
@@ -155,10 +153,6 @@ class SoilGrid_2Dflow(object):
         # lower boundaries
         #print('spara[deep_z]', spara['deep_z'])
         self.deep_z = spara['deep_z']*-1
-        self.bedrock_h = self.ele + self.deep_z
-        self.bedrock_h[self.lake_interior == 1] = np.nan
-        self.bedrock_h[self.lake_interior == 1] = -999
-        self.bedrock_h = np.ravel(self.bedrock_h)
 
         # replace nans (values outside catchment area)
         self.H[np.isnan(self.H)] = -999
@@ -167,8 +161,8 @@ class SoilGrid_2Dflow(object):
         self.Wsto_deep_max = np.full_like(self.gwl, 0.0)  # storage of fully saturated profile
         self.Wsto_deep = np.full_like(self.gwl, 0.0)  
 
-        # rootzone moisture [m3 m-3]
-        #self.deepmoist = np.full_like(self.gwl, 0.0)
+        # deep moisture [m3 m-3]
+        self.deepmoist = np.full_like(self.gwl, 0.0)
 
         # self.z_from_gis == True OR False
         # determines whether the deep_z and thus interpolation functions are made cell-wise (True) or soiltype-wise (False)
@@ -183,17 +177,17 @@ class SoilGrid_2Dflow(object):
             for key, value in self.gwl_to_wsto.items():
                 self.Wsto_deep_max[self.soiltype == key] = value(0.0)
                 self.Wsto_deep[self.soiltype == key] = value(self.gwl[self.soiltype == key]) # storage corresponding to h
-            #for key, value in self.gwl_to_rootmoist.items():
-            #    self.deepmoist[self.soiltype == key] = value(self.gwl[self.soiltype == key])
+            for key, value in self.gwl_to_rootmoist.items():
+                self.deepmoist[self.soiltype == key] = value(self.gwl[self.soiltype == key])
         elif self.z_from_gis: # cell-wise calculation
             for i in range(self.gwl_to_wsto.shape[0]):
                 for j in range(self.gwl_to_wsto.shape[1]):
                     if np.isfinite(self.cmask[i,j]): 
                         self.Wsto_deep_max[i,j] = self.gwl_to_wsto[i,j](0.0) # max storage with gwl = 0
                         self.Wsto_deep[i,j] = self.gwl_to_wsto[i,j](self.gwl[i,j]) # storage corresponding to h
-                        #self.deepmoist[i,j] = self.gwl_to_rootmoist[i,j](self.gwl[i,j])
+                        self.deepmoist[i,j] = self.gwl_to_rootmoist[i,j](self.gwl[i,j])
             
-        #self.deepmoist[np.isnan(self.gwl)] = np.nan
+        self.deepmoist[np.isnan(self.gwl)] = np.nan
 
         # air volume and returnflow
         self.airv_deep = np.maximum(0.0, self.Wsto_deep_max - self.Wsto_deep)
@@ -236,7 +230,7 @@ class SoilGrid_2Dflow(object):
     def rolling_window(self, a, window):
         """
         Returns a strided view of array a with a sliding window along the last axis.
-        Used to compute geometric-mean transmissivities at cell interfaces.
+        Used to compute geometric/harmonic-mean transmissivities at cell interfaces.
 
         Args:
             a      (array): 2D input array.
@@ -317,7 +311,6 @@ class SoilGrid_2Dflow(object):
 
         if self.ditch_boundary == 'Cauchy':
             ditch_l = np.ravel(self.ditch_l)
-            ditch_w = np.ravel(self.ditch_w)
             ditch_d = np.ravel(self.ditch_d)
             # Dupuit-Forchheimer for all drainage cells; C_dd updated each iteration inside loop (head-dependent)
             C_dd = np.zeros_like(H)
@@ -589,8 +582,6 @@ class SoilGrid_2Dflow(object):
             # Solve: A*Htmp1 = hs
             Htmp1 = linalg.spsolve(A,hs)
 
-            #Htmp1 = np.fmax(self.bedrock_h, Htmp1) # limit to bedrock
-
             # Diagnose cells with large head change before clamping
             large_diff = np.abs(Htmp1 - Htmp) > 0.5
             if np.any(large_diff):
@@ -709,13 +700,6 @@ class SoilGrid_2Dflow(object):
         TrN = np.reshape(self.TrN1, (self.rows, self.cols)) * self.cmask
         TrS = np.reshape(self.TrS1, (self.rows, self.cols)) * self.cmask
 
-        # new update state
-        # state0 = water storage at timestep0 (including bucket drainage at timestep0)
-        # Wsto_deep = water storage at timestep1
-        # lateral_flow = lateral flow of each grid-cell as calculated in two parts earlier
-        #   lateral_flow is positive when flow going out of the grid cells (saved as -lateral_flow)
-        # mbe = state0 - Wsto_deep - lateral_flow * dt - S_dd (makes sense)
-
         # Let's limit head to 0 and assign rest as return flow to bucketgrid
         Wsto_before_qr = self.Wsto_deep.copy()
 
@@ -728,14 +712,14 @@ class SoilGrid_2Dflow(object):
         if not self.z_from_gis:
             for key, value in self.gwl_to_wsto.items():
                 self.Wsto_deep[self.soiltype == key] = value(self.H[self.soiltype == key] - self.ele[self.soiltype == key])
-            #for key, value in self.gwl_to_rootmoist.items():
-            #    self.deepmoist[self.soiltype == key] = value(self.gwl[self.soiltype == key])
+            for key, value in self.gwl_to_rootmoist.items():
+                self.deepmoist[self.soiltype == key] = value(self.gwl[self.soiltype == key])
         elif self.z_from_gis:
             for i in range(self.gwl_to_wsto.shape[0]):
                 for j in range(self.gwl_to_wsto.shape[1]):
                     if np.isfinite(self.cmask[i,j]): 
                         self.Wsto_deep[i,j] = self.gwl_to_wsto[i,j](self.H[i,j] - self.ele[i,j])  
-                        #self.deepmoist[i,j] = self.gwl_to_rootmoist[i,j](self.gwl[i,j])
+                        self.deepmoist[i,j] = self.gwl_to_rootmoist[i,j](self.gwl[i,j])
 
         # The difference is the return flow to bucketgrid
         qr = Wsto_before_qr - self.Wsto_deep
@@ -771,6 +755,7 @@ class SoilGrid_2Dflow(object):
                     'water_closure': mbe * 1e3 / dt,  # [mm d-1]
                     'water_storage': Wsto_deep_out * 1e3,  # [mm]
                     'return_flow': qr * 1e3,  # [mm]
+                    'moisture_deep': self.deepmoist * self.cmask,  # [m3 m-3]
                     'transmissivity_W': TrW,  # [m2 d-1]
                     'transmissivity_E': TrE,  # [m2 d-1]
                     'transmissivity_N': TrN,  # [m2 d-1]
@@ -800,6 +785,7 @@ class SoilGrid_2Dflow(object):
                     'water_closure': mbe * 1e3 / dt,  # [mm d-1]
                     'water_storage': Wsto_deep_out * 1e3,  # [mm]
                     'return_flow': qr * 1e3,  # [mm]
+                    'moisture_deep': self.deepmoist * self.cmask,  # [m3 m-3]
                     'transmissivity_W': TrW,  # [m2 d-1]
                     'transmissivity_E': TrE,  # [m2 d-1]
                     'transmissivity_N': TrN,  # [m2 d-1]
