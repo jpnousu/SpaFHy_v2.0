@@ -252,7 +252,7 @@ def parameters(folder=''):
             'stream_width': f'{streams}_width.asc', # average stream width
             'lakes': 'lake_mask.asc',
             #'deep_z': 'soildepth.asc',
-            'deep_z': -10.0,
+            'deep_z': 10.0,
             'deep_poros': 0.41,
             'deep_wr': 0.05,
             'deep_alpha': 0.024,
