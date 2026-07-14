@@ -327,20 +327,23 @@ class SoilGrid_2Dflow(object):
 
         # calculate mean H of neighboring non-BC nodes to determine whether BC is active
         # done outside iteration loop to avoid boundary switching during iteration
+        # valid neighbors must be inside the catchment (finite cmask) and not carry
+        # the outside-domain value H=-999
+        cmask_flat = np.ravel(self.cmask)
         H_neighbours = bc_h.copy()
         for k in np.where(bc_h < -eps)[0]:
             H_ave = 0
             n_neigh = 0
-            if k%self.cols != 0 and bc_h[k-1] > -eps:
+            if k%self.cols != 0 and bc_h[k-1] > -eps and np.isfinite(cmask_flat[k-1]) and H[k-1] != -999:
                     H_ave += H[k-1]
                     n_neigh += 1
-            if (k+1)%self.cols != 0 and bc_h[k+1] > -eps:
+            if (k+1)%self.cols != 0 and bc_h[k+1] > -eps and np.isfinite(cmask_flat[k+1]) and H[k+1] != -999:
                     H_ave += H[k+1]
                     n_neigh += 1
-            if k-self.cols >= 0 and bc_h[k-self.cols] > -eps:
+            if k-self.cols >= 0 and bc_h[k-self.cols] > -eps and np.isfinite(cmask_flat[k-self.cols]) and H[k-self.cols] != -999:
                     H_ave += H[k-self.cols]
                     n_neigh += 1
-            if k+self.cols < self.n and bc_h[k+self.cols] > -eps:
+            if k+self.cols < self.n and bc_h[k+self.cols] > -eps and np.isfinite(cmask_flat[k+self.cols]) and H[k+self.cols] != -999:
                     H_ave += H[k+self.cols]
                     n_neigh += 1
             if n_neigh > 0:
@@ -1153,12 +1156,10 @@ def h_to_cellmoist_vectorized(pF, h, dz):
     theta = Tr + (Ts - Tr) / (1 + abs(alfa * 100 * x)**n)**m
 
     # correct moisture of partly saturated cells
-    ix = np.where(abs(h[0]) < dz/2)
-
-    if Ts.shape[1] == 1:
-        ixx = (np.array([0]), np.array([0]))  # Single index for 2D case
-    else:
-        ixx = ix
+    # use the full 2D h so each cell gets its own partly-saturated correction,
+    # not just the correction derived from row 0
+    ix = np.where(abs(h) < dz/2)
+    ixx = ix
     # moisture of unsaturated part
     x[ix] = -(dz[ix]/2 - h[ix]) / 2
     theta[ix] = Tr[ixx] + (Ts[ixx] - Tr[ixx]) / (1 + abs(alfa[ixx] * 100 * x[ix])**n[ixx])**m[ixx]
@@ -1248,10 +1249,13 @@ def wrc(pF, theta=None, psi=None, draw_pF=False):
         return Th
 
     # --- convert between theta <-- --> psi
-    if (theta != None).any():
-        y = theta_psi(theta)  # 'Theta-->Psi'
-    elif (psi != None).any():
-        y = psi_theta(psi)  # 'Psi-->Theta'
+    # use explicit None checks so scalars and None defaults are handled safely;
+    # y is initialised to None so return y is always bound even if draw_pF=True
+    y = None
+    if theta is not None:
+        y = theta_psi(np.atleast_1d(theta))  # 'Theta-->Psi'
+    elif psi is not None:
+        y = psi_theta(np.atleast_1d(psi))  # 'Psi-->Theta'
 
     # draws pf-curve
     if draw_pF:
