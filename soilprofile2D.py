@@ -26,7 +26,6 @@ import numpy as np
 from scipy.stats.mstats import gmean
 from scipy.interpolate import interp1d
 from scipy.sparse import diags, linalg
-import matplotlib.pyplot as plt
 eps = np.finfo(float).eps
 
 class SoilGrid_2Dflow(object):
@@ -875,6 +874,8 @@ def gwl_Wsto(z, pF, grid_step=-0.01, Ksat=None, root=False):
     plots = False
     if plots == True:
         import os, time
+        import matplotlib.pyplot as plt
+
         os.makedirs('figs', exist_ok=True)
         _ts = int(time.time() * 1000)
 
