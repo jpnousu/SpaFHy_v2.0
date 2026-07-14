@@ -754,9 +754,6 @@ def preprocess_dsdata_vec(pspd, spatial_pspd, deepp, gisdata, spatial=True):
         data['gwl_to_rootmoist'] = temp_to_rootmoist.reshape(gridshape.shape)
         data['deep_z'] = deep_z_f.reshape(data['deep_z'].shape)
 
-    for key, value in deepp.items():
-        ix = np.where(data['deep_id'] == value['deep_id'])
-
     data['lakes'] = np.where(data['lakes'] < -eps, pspd['lake_depth'], 0)
 
     data['dxy'] = gisdata['dxy']
