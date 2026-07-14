@@ -317,7 +317,7 @@ class BucketGrid(object):
         x = np.maximum(x, self.wr_root)  # checks limits
 
         s = (self.poros_root - self.wr_root) / ((x - self.wr_root) + eps)
-        Psi = -1 / self.alpha_root*(s**(1.0 / m) - 1.0)**(1.0 / n)  # alpha defines the unit (kPa)
+        Psi = -1. / self.alpha_root*(np.maximum(s**(1.0 / m) - 1.0, 0.0))**(1.0 / n)  # alpha defines the unit (kPa)
         Psi = 1e-3*Psi # kPa to MPa
         
         return Psi

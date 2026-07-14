@@ -17,7 +17,6 @@ import pandas as pd
 import os
 import matplotlib.pyplot as plt
 from soilprofile2D import gwl_Wsto, gwl_Wsto_vectorized
-from koordinaattimuunnos import koordTG
 from topmodel import twi as twicalc
 import re
 import importlib
@@ -675,18 +674,21 @@ def preprocess_dsdata_vec(pspd, spatial_pspd, deepp, gisdata, spatial=True):
         for key, value in deepp.items():
             c = value['deep_id']
             ix = np.where(data['deep_id'] == c)
+            if len(ix[0]) == 0:  # soil type defined in deepp but absent from this catchment
+                continue
             data['soiltype'][ix] = key
-            data['deep_z'][ix] = value['deep_z']
+            data['deep_z'][ix] = -value['deep_z'][-1]  # negate: deepp uses negative gwl-convention depths; soilprofile2D expects positive (multiplies by -1)
             # interpolation function between wsto and gwl
             value.update(gwl_Wsto(value['deep_z'], value['pF'], -0.01, value['deep_ksat']))
             # interpolation function between root_wsto and gwl
             value.update(gwl_Wsto(value['deep_z'][:2], {key: value['pF'][key][:2] for key in value['pF'].keys()}, root=True))
         
-        data['wtso_to_gwl'] = {soiltype: deepp[soiltype]['to_gwl'] for soiltype in deepp.keys()}
-        data['gwl_to_wsto'] = {soiltype: deepp[soiltype]['to_wsto'] for soiltype in deepp.keys()}
-        data['gwl_to_C'] = {soiltype: deepp[soiltype]['to_C'] for soiltype in deepp.keys()}
-        data['gwl_to_Tr'] = {soiltype: deepp[soiltype]['to_Tr'] for soiltype in deepp.keys()}
-        data['gwl_to_rootmoist'] = {soiltype: deepp[soiltype]['to_rootmoist'] for soiltype in deepp.keys()}
+        active = [st for st in deepp.keys() if 'to_gwl' in deepp[st]]  # soil types present in this catchment
+        data['wtso_to_gwl']    = {st: deepp[st]['to_gwl']       for st in active}
+        data['gwl_to_wsto']    = {st: deepp[st]['to_wsto']       for st in active}
+        data['gwl_to_C']       = {st: deepp[st]['to_C']          for st in active}
+        data['gwl_to_Tr']      = {st: deepp[st]['to_Tr']         for st in active}
+        data['gwl_to_rootmoist'] = {st: deepp[st]['to_rootmoist'] for st in active}
 
     elif spatial_data['deep_z']:
         # we have data['deep_id'] and data['z']
@@ -698,6 +700,7 @@ def preprocess_dsdata_vec(pspd, spatial_pspd, deepp, gisdata, spatial=True):
         deep_id_f = data['deep_id'].flatten()
         deep_z = data['deep_z']
         deep_z[deep_z < 5] = 5. # NOTE MINIMUM IS 5M DEPTH!
+        #deep_z[deep_z > 8] = 8. # NOTE MAXIMUM IS 8M DEPTH!
         deep_z_f = deep_z.flatten()
         # creating the arrays
         deep_zs = np.full((len(deep_id_f), max_nlyrs), np.nan)
@@ -1618,7 +1621,7 @@ def rw_FMI_files(sourcefiles, out_path, plot=False):
     return fmi
 
 
-def stitch_result_nc_files(root_directory, output_file, plot=False):
+def stitch_result_nc_files(root_directory, output_file, plot=False, start_date=None, end_date=None):
     """
     Merges multiple sub-catchment NetCDF result files into a single file.
 
@@ -1635,9 +1638,15 @@ def stitch_result_nc_files(root_directory, output_file, plot=False):
     
     import xarray as xr
 
+    def apply_time_slice(ds):
+        if start_date is not None or end_date is not None:
+            return ds.sel(time=slice(start_date, end_date))
+        return ds
+    
     def extract_lats_lons(nc_file):
         """Extracts latitudes and longitudes from a NetCDF file."""
         with xr.open_dataset(nc_file) as ds:
+            ds = apply_time_slice(ds)
             lat = ds['lat'].values
             lon = ds['lon'].values
             cellsize = np.float32(np.abs(ds['lat'][1]-ds['lat'][0]))
@@ -1646,6 +1655,7 @@ def stitch_result_nc_files(root_directory, output_file, plot=False):
     def extract_time_and_variables(nc_file):
         """Extracts time dimensions and data variable names from the first NetCDF file."""
         with xr.open_dataset(nc_file) as ds:
+            ds = apply_time_slice(ds)
             time = ds['time'].values
             variables = {var: ds[var].dims for var in ds.data_vars.keys()}
         return time, variables
@@ -1690,6 +1700,7 @@ def stitch_result_nc_files(root_directory, output_file, plot=False):
                 if file.endswith(".nc"):
                     nc_file_path = os.path.join(dirpath, file)
                     with xr.open_dataset(nc_file_path) as ds:
+                        ds = apply_time_slice(ds)
                         for var in ds.data_vars.keys():
                             var_dims = ds[var].dims
 
@@ -1734,7 +1745,8 @@ def stitch_result_nc_files(root_directory, output_file, plot=False):
                 result_path = os.path.join(dirpath, file)
 
                 # Read the result dataset
-                result_ds = xr.open_dataset(result_path)
+                #result_ds = xr.open_dataset(result_path)
+                result_ds = apply_time_slice(xr.open_dataset(result_path))
                 if plot:
                     plt.figure(i)
                 i += 1
@@ -1807,3 +1819,135 @@ def stitch_result_nc_files(root_directory, output_file, plot=False):
     os.remove(temp_file)  # Remove the temporary file
             
     print('*** Finished ***')
+
+
+
+def koordGT(lev_aste, pit_aste, desimals=0):
+
+    """
+    Muunnosfunktiot koordinaattiprojektioille
+    ETRS89-TM35FIN, geodeettisista tasokoordinaateiksi ja takaisin
+
+    Lähde: JHS 154, 6.6.2008
+    http://www.jhs-suositukset.fi/web/guest/jhs/recommendations/154
+
+    2013-04-29/JeH, loukko (at) loukko (dot) net
+    http://www.loukko.net/koord_proj/
+    Vapaasti käytettävissä ilman toimintatakuuta.
+
+    25.1.2019 khaahti to python
+    13.5.2019 khaahti: muokattu muuttamaan KKJ-grid, zone 3/Uniform (YKJ) -> KKJ geografical
+
+    # Muuntaa desimaalimuotoiset leveys- ja pituusasteet YKJ tasokoordinaateiksi
+    # koordGT(60.565894, 24.822422) -->  (6719258, 3380581)
+    """
+
+    # Vakiot
+    f = 1 / 297.0  # Ellipsoidin litistyssuhde
+    a = 6378388  # Isoakselin puolikas
+    lmbda_nolla = 0.471238898  # Keskimeridiaani (rad), 27 astetta
+    k_nolla = 1.0  # Mittakaavakerroin
+    E_nolla = 3500000  # Itäkoordinaatti
+
+    # Kaavat
+    # Muunnetaan astemuotoisesta radiaaneiksi
+    fii = np.pi / 180.0  * lev_aste
+    lmbda = np.pi / 180.0  * pit_aste
+
+    n = f / (2-f)
+    A1 = (a/(1+n)) * (1 + (pow(n, 2)/4) + (pow(n, 4)/64))
+    e_toiseen = (2 * f) - pow(f, 2)
+    e_pilkku_toiseen = e_toiseen / (1 - e_toiseen)
+    h1_pilkku = (1/2)*n - (2/3)*pow(n, 2) + (5/16)*pow(n, 3) + (41/180)*pow(n, 4)
+    h2_pilkku = (13/48)*pow(n, 2) - (3/5)*pow(n, 3) + (557/1440)*pow(n, 4)
+    h3_pilkku =(61/240)*pow(n, 3) - (103/140)*pow(n, 4)
+    h4_pilkku = (49561/161280)*pow(n, 4)
+    Q_pilkku = np.arcsinh( np.tan(fii))
+    Q_2pilkku = np.arctanh(np.sqrt(e_toiseen) * np.sin(fii))
+    Q = Q_pilkku - np.sqrt(e_toiseen) * Q_2pilkku
+    l = lmbda - lmbda_nolla
+    beeta = np.arctan(np.sinh(Q))
+    eeta_pilkku = np.arctanh(np.cos(beeta) * np.sin(l))
+    zeeta_pilkku = np.arcsin(np.sin(beeta)/(1/np.cosh(eeta_pilkku)))
+    zeeta1 = h1_pilkku * np.sin( 2 * zeeta_pilkku) * np.cosh( 2 * eeta_pilkku)
+    zeeta2 = h2_pilkku * np.sin( 4 * zeeta_pilkku) * np.cosh( 4 * eeta_pilkku)
+    zeeta3 = h3_pilkku * np.sin( 6 * zeeta_pilkku) * np.cosh( 6 * eeta_pilkku)
+    zeeta4 = h4_pilkku * np.sin( 8 * zeeta_pilkku) * np.cosh( 8 * eeta_pilkku)
+    eeta1 = h1_pilkku * np.cos( 2 * zeeta_pilkku) * np.sinh( 2 * eeta_pilkku)
+    eeta2 = h2_pilkku * np.cos( 4 * zeeta_pilkku) * np.sinh( 4 * eeta_pilkku)
+    eeta3 = h3_pilkku * np.cos( 6 * zeeta_pilkku) * np.sinh( 6 * eeta_pilkku)
+    eeta4 = h4_pilkku * np.cos( 8 * zeeta_pilkku) * np.sinh( 8 * eeta_pilkku)
+    zeeta = zeeta_pilkku + zeeta1 + zeeta2 + zeeta3 + zeeta4
+    eeta = eeta_pilkku + eeta1 + eeta2 + eeta3 + eeta4
+
+    # Tulos tasokoordinaatteina
+    N = A1 * zeeta * k_nolla
+    E = A1 * eeta * k_nolla + E_nolla
+
+    return np.round(N, desimals), np.round(E, desimals)
+
+
+def  koordTG(N, E, desimals=2):
+    """
+    Muunnosfunktiot koordinaattiprojektioille
+    ETRS89-TM35FIN, geodeettisista tasokoordinaateiksi ja takaisin
+
+    Lähde: JHS 154, 6.6.2008
+    http://www.jhs-suositukset.fi/web/guest/jhs/recommendations/154
+
+    2013-04-29/JeH, loukko (at) loukko (dot) net
+    http://www.loukko.net/koord_proj/
+    Vapaasti käytettävissä ilman toimintatakuuta.
+
+    25.1.2019 khaahti to python
+    13.5.2019 khaahti: muokattu muuttamaan KKJ-grid, zone 3/Uniform (YKJ) -> KKJ geografical
+
+    # koordTG
+    # Muuntaa YKJ tasokoordinaatit desimaalimuotoisiksi leveys- ja pituusasteiksi
+    # koordTG(6719258, 3380581) -> (60.565894, 24.822422)
+    """
+
+    # Vakiot
+    f = 1 / 297.0  # Ellipsoidin litistyssuhde
+    a = 6378388  # Isoakselin puolikas
+    lmbda_nolla = 0.471238898  # Keskimeridiaani (rad), 27 astetta
+    k_nolla = 1.0  # Mittakaavakerroin
+    E_nolla = 3500000  # Itäkoordinaatti
+
+    # Kaavat
+    n = f / (2-f)
+    A1 = (a/(1+n)) * (1 + (pow(n, 2)/4) + (pow(n, 4)/64))
+    e_toiseen = (2 * f) - pow(f, 2)
+    h1 = (1/2)*n - (2/3)*pow(n, 2) + (37/96)*pow(n, 3) - (1/360)*pow(n, 4)
+    h2 = (1/48)*pow(n, 2) + (1/15)*pow(n, 3) - (437/1440)*pow(n, 4)
+    h3 =(17/480)*pow(n, 3) - (37/840)*pow(n, 4)
+    h4 = (4397/161280)*pow(n, 4)
+    zeeta = N / (A1 * k_nolla)
+    eeta = (E - E_nolla) / (A1 * k_nolla)
+    zeeta1_pilkku = h1 * np.sin( 2 * zeeta) * np.cosh( 2 * eeta)
+    zeeta2_pilkku = h2 * np.sin( 4 * zeeta) * np.cosh( 4 * eeta)
+    zeeta3_pilkku = h3 * np.sin( 6 * zeeta) * np.cosh( 6 * eeta)
+    zeeta4_pilkku = h4 * np.sin( 8 * zeeta) * np.cosh( 8 * eeta)
+    eeta1_pilkku = h1 * np.cos( 2 * zeeta) * np.sinh( 2 * eeta)
+    eeta2_pilkku = h2 * np.cos( 4 * zeeta) * np.sinh( 4 * eeta)
+    eeta3_pilkku = h3 * np.cos( 6 * zeeta) * np.sinh( 6 * eeta)
+    eeta4_pilkku = h4 * np.cos( 8 * zeeta) * np.sinh( 8 * eeta)
+    zeeta_pilkku = zeeta - (zeeta1_pilkku + zeeta2_pilkku + zeeta3_pilkku + zeeta4_pilkku)
+    eeta_pilkku = eeta - (eeta1_pilkku + eeta2_pilkku + eeta3_pilkku + eeta4_pilkku)
+    beeta = np.arcsin((1/np.cosh(eeta_pilkku)*np.sin(zeeta_pilkku)))
+    l = np.arcsin(np.tanh(eeta_pilkku)/(np.cos(beeta)))
+    Q = np.arcsinh(np.tan(beeta))
+    Q_pilkku = Q + np.sqrt(e_toiseen) * np.arctanh(np.sqrt(e_toiseen) * np.tanh(Q))
+
+    for kierros in range(2):
+        Q_pilkku = Q + np.sqrt(e_toiseen) * np.arctanh(np.sqrt(e_toiseen) * np.tanh(Q_pilkku))
+
+    # Tulos radiaaneina
+    fii = np.arctan(np.sinh(Q_pilkku))
+    lmbda = lmbda_nolla + l
+
+    # Tulos asteina
+    fii = fii / np.pi * 180.0
+    lmbda = lmbda / np.pi * 180.0
+
+    return np.round(fii, desimals), np.round(lmbda, desimals)
