@@ -758,6 +758,7 @@ class SoilGrid_2Dflow(object):
                     'water_storage': Wsto_deep_out * 1e3,  # [mm]
                     'return_flow': qr * 1e3,  # [mm]
                     'moisture_deep': self.deepmoist * self.cmask,  # [m3 m-3]
+                    'transmissivity': np.nanmean([TrW, TrE, TrN, TrS], axis=0),  # [m2 d-1]
                     'transmissivity_W': TrW,  # [m2 d-1]
                     'transmissivity_E': TrE,  # [m2 d-1]
                     'transmissivity_N': TrN,  # [m2 d-1]
