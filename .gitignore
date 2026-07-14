@@ -131,6 +131,8 @@ sand*.ipynb
 *.sh
 *.out
 *.err
+*.prj
+*.asc.aux.xml
 *.xml
 *.nc
 .DS_Store
