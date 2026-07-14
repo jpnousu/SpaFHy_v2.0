@@ -872,7 +872,7 @@ def gwl_Wsto(z, pF, grid_step=-0.01, Ksat=None, root=False):
     GwlToC = interp1d(np.array(gwl), np.array(np.gradient(Wsto_deep)/np.gradient(gwl)), fill_value='extrapolate')
     GwlToTr = interp1d(np.array(gwl), np.array(Tr), fill_value='extrapolate')
     
-    plots = True
+    plots = False
     if plots == True:
         import os, time
         os.makedirs('figs', exist_ok=True)
