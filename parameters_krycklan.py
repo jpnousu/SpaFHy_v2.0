@@ -6,6 +6,7 @@ PARAMETERS
 
 import pathlib
 import time
+from datetime import datetime
 
 reso = 20
 streams = 'channels'
@@ -15,10 +16,10 @@ def parameters(folder=''):
 
     pgen = {'description': 'final_run',  # description written in result file
             'simtype': '2D', # 1D, TOP, 2D,
-            'start_date': '2013-01-01',  # '2011-01-01', for tests: '2020-01-01'
-            'end_date': '2018-12-31', # 2023-12-31,
+            'start_date': '2014-10-01', # 2013-01-01 full run
+            'end_date': '2015-10-01', # 2018-12-31 full run
             #'spinup_file': r'F:\SpaFHy_2D_2021/testcase_input_202304051037_spinup.nc',
-            'spinup_end': '2014-09-01',  # '2015-09-01', for tests: '2020-09-01' results after this are saved in result file
+            'spinup_end': '2015-04-01',  # 2014-09-01 full run
             'dt': 86400.0,
             'spatial_cpy': True,  # if False uses parameters from cpy['state']
             # else needs cf.dat, hc.dat, LAI_decid.dat, LAI_spruce.dat, LAI_pine.dat, (cmask.dat)
@@ -35,11 +36,11 @@ def parameters(folder=''):
             'gis_folder': str(pathlib.Path(folder+f'/gis/{reso}m')),
             'forcing_file': str(pathlib.Path(folder+r'/forcing/FORCING.csv')),
             'forcing_id': 0,  # used if spatial_forcing == False
-            'ncf_file': time.strftime('%Y%m%d%H%M') + r'.nc',  # timestamp to result file name to avoid saving problem when running repeatedly
+            'ncf_file': datetime.now().strftime('%Y%m%d%H%M%S%f') + r'.nc',  # timestamp to result file name to avoid saving problem when running repeatedly
             'cmask' : 'catchment_mask.asc',
             'mask': None, # 'cmask/streams', 'cmask', 'streams', None
             #'results_folder': r'/scratch/project_2000908/nousu/SpaFHy_RESULTS',
-            'results_folder': str(pathlib.Path(folder+f'/results/simulations_10_7_2026/{streams}_{reso}m')),
+            'results_folder': str(pathlib.Path(folder+f'/results/calibration_7_2026/{streams}_{reso}m')),
             'save_interval': 366, # interval for writing results to file (decreases need for memory during computation)
             'variables':[ # list of output variables (rows can be commented away if not all variables are of interest)
                     #['parameters_lai_conif', 'leaf area index of conifers [m2 m-2]'],
@@ -488,7 +489,7 @@ def org_properties():
 # so a partial soil_params.py (e.g. only deep_properties) works fine too.
 # ---------------------------------------------------------------------------
 try:
-    import parameters_krycklan_soil_old as _sp
+    import parameters_krycklan_soil as _sp
     if hasattr(_sp, 'org_properties'):
         org_properties = _sp.org_properties
     if hasattr(_sp, 'root_properties'):

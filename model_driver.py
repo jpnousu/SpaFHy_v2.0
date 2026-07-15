@@ -6,6 +6,7 @@ Created on Mon Jan 21 13:52:46 2019
 """
 
 import time
+from datetime import datetime
 import numpy as np
 import pandas as pd
 from spafhy import SpaFHy
@@ -129,16 +130,6 @@ def driver(catchment, catchment_no, create_ncf=False, create_spinup=False, outpu
     interval = 0
     Nsaved = Nspin - 1
 
-    # flatten arrays
-    flatten = False
-    if flatten == True:
-        rows = pcpy['state']['LAI_conif'].shape[0]
-        cols = pcpy['state']['LAI_conif'].shape[1]
-        pcpy = flatten_2d_arrays(pcpy)
-        pbu = flatten_2d_arrays(pbu)
-        pds = flatten_2d_arrays(pds)
-        ptop = flatten_2d_arrays(ptop)
-
     # this here so that we save params
     dir_path = pgen['results_folder']
     # Loop through each dictionary and save it
@@ -159,11 +150,6 @@ def driver(catchment, catchment_no, create_ncf=False, create_spinup=False, outpu
             top_results, canopy_results, bucket_results = spa.run_timestep(forcing.isel(date=k))
         elif pgen['simtype'] == '1D':
             canopy_results, bucket_results = spa.run_timestep(forcing.isel(date=k))
-
-        # here reshape the results arrays if flattened
-        if flatten == True:
-            canopy_results = reshape_1d_to_2d(canopy_results, rows=rows, cols=cols)
-            bucket_results = reshape_1d_to_2d(bucket_results, rows=rows, cols=cols)
 
         if (k >= Nspin):  # save results after spinup done
             if pgen['simtype'] == '2D':
@@ -494,33 +480,6 @@ def _append_results(group, step_results, results, step=None):
                 results[key][step] = res
     return results
 
-
-def flatten_2d_arrays(d):
-    new_dict = {}
-    for key, value in d.items():
-        # If the value is a dictionary, recursively apply the function and add to the new dictionary
-        if isinstance(value, dict):
-            new_dict[key] = flatten_2d_arrays(value)
-        # If the value is a 2D array, flatten it and add to the new dictionary
-        elif isinstance(value, np.ndarray) and value.ndim == 2:
-            new_dict[key] = value.flatten()
-        # Otherwise, just add the value as it is
-        else:
-            new_dict[key] = value
-    return new_dict
-
-
-def reshape_1d_to_2d(results_dict, rows, cols):
-    reshaped_dict = {}
-    
-    for key, value in results_dict.items():
-        if isinstance(value, (list, np.ndarray)) and len(value) == rows * cols:
-            reshaped_dict[key] = np.array(value).reshape(rows, cols)
-        else:
-            reshaped_dict[key] = value  # Leave floats or other values unchanged
-    
-    return reshaped_dict
-
 def create_simulation_folder(pgen):
     # Get the results folder path
     results_folder = pgen['results_folder']
@@ -531,8 +490,8 @@ def create_simulation_folder(pgen):
     mask = pgen.get('mask', 'default_mask')
     
     # Get the current timestamp
-    timestamp = time.strftime('%Y%m%d%H%M')
-    
+    timestamp = datetime.now().strftime('%Y%m%d%H%M%S%f')
+
     # Create the subfolder name
     simulation_folder = f"{description}_{mask}_{simtype}_{timestamp}"
     
@@ -545,7 +504,6 @@ def create_simulation_folder(pgen):
     return simulation_folder_path
 
 def clip_2d_to_mask(arr, mask):
-    # Find rows and columns where there is at least one non-nan value
     # Find rows and columns where there is at least one non-nan value
 
     arr_shape = arr.shape
