@@ -14,24 +14,29 @@ if __name__ == '__main__':
     io_path = str(Path(os.getenv('PROJECT_FOLDER')))
     folder = os.path.join(io_path, 'krycklan')  # io repo
     catchment_no = 2 # C2 catchment
-    runoff_folder = os.getenv('RUNOFF_DATA')
+    runoff_folder = os.path.join(folder, 'obs', 'DISCHARGE')  # runoff data folder
+    print('runoff folder', runoff_folder)
 
     # evaluate or plot?
     evaluate = True
+    ev_metric = 'rmse'
     plot = True
 
     ### CALIBRATION SETUP ###
     # soil type to calibrate (add more blocks below for additional soil types)
     soil_type = 'Medium'
     # f values for calibration
-    f_range = np.array([2., 4., 6., 8., 12., 14., 16.])
-    #f_range = np.array([14.])
+    f_range = np.array([6., 8., 12., 14., 16.]) # up to crazy range
+    #f_range = np.array([2., 4., 6., 8., 10., 12.]) # reasonable range
+    f_range = np.array([14.]) # small test
     # kmax values for calibration
-    kmax_range = np.array([1e-5, 1e-4, 1e-3, 1e-2, 0.1])
-    #kmax_range = np.array([0.1, 0.01])
+    kmax_range = np.array([1e-5, 1e-4, 1e-3, 1e-2, 0.1]) # up to crazy range
+    #kmax_range = np.array([1e-5, 5e-4, 1e-4, 5e-4]) # reasonable range
+    kmax_range = np.array([0.1, 0.01]) # small test
     # kmin values for calibration
-    kmin_range = np.array([1e-9, 1e-8, 1e-7])
-    #kmin_range = np.array([1e-7])
+    kmin_range = np.array([1e-9, 1e-8, 1e-7, 1e-6]) # 
+    #kmin_range = np.array([1e-7, 1e-6, 1e-5, 5e-5]) # reasonable range
+    kmin_range = np.array([1e-7]) # small test
     # all possible combinations of kmax, kmin and f values (kmin must be strictly less than kmax)
     combinations = []
     for kmax, kmin, f in itertools.product(kmax_range, kmin_range, f_range):
@@ -99,20 +104,24 @@ if __name__ == '__main__':
             all_params.append(df)
         summary = pd.concat(all_params, axis=1).T
         summary.index.name = 'run'
-        best_run_tot   = summary['kge_tot'].astype(float).idxmax()
-        best_run_sbsrf = summary['kge_sbsrf'].astype(float).idxmax()
+        ev_var_tot = f'{ev_metric}_tot'
+        ev_var_sbsrf = f'{ev_metric}_sbsrf'
+        best_fn = summary[ev_var_tot].astype(float).idxmin if ev_metric in ('rmse', 'mbe') else summary[ev_var_tot].astype(float).idxmax
+        best_run_tot   = best_fn()
+        best_fn = summary[ev_var_sbsrf].astype(float).idxmin if ev_metric in ('rmse', 'mbe') else summary[ev_var_sbsrf].astype(float).idxmax
+        best_run_sbsrf = best_fn()
         print('\n--- Calibration ranges ---')
         print(f'  {"kmax_" + soil_type:<20} {kmax_range}')
         print(f'  {"kmin_" + soil_type:<20} {kmin_range}')
         print(f'  {"f_" + soil_type:<20} {f_range}')
         print(f'  Total combinations: {len(combinations)}')
-        print('\n--- Best KGE (total runoff) ---')
+        print(f'\n--- Best {ev_metric.upper()} (total runoff) ---')
         best = summary.loc[best_run_tot]
         for param, val in best.items():
             v = float(val)
             formatted = f'{v:.2e}' if abs(v) < 0.01 and v != 0 else f'{v:.4f}'
             print(f'  {param:<20} {formatted}')
-        print('\n--- Best KGE (subsurface runoff) ---')
+        print(f'\n--- Best {ev_metric.upper()} (subsurface runoff) ---')
         best = summary.loc[best_run_sbsrf]
         for param, val in best.items():
             v = float(val)
@@ -167,10 +176,10 @@ if __name__ == '__main__':
         ax.set_ylabel('Runoff [mm/d]')
         ax.legend(loc='upper right')
         ax2.set_ylabel('Runoff [mm/d]')
-        ax2.set_title('Best total KGE', fontsize=9)
+        ax2.set_title(f'Best total {ev_metric.upper()}', fontsize=9)
         ax2.legend()
         ax3.set_ylabel('Runoff [mm/d]')
-        ax3.set_title('Best subsurface KGE', fontsize=9)
+        ax3.set_title(f'Best subsurface {ev_metric.upper()}', fontsize=9)
         ax3.legend()
 
         # Ksat inset in ax — all runs as grey, best as black
@@ -197,7 +206,7 @@ if __name__ == '__main__':
         ax_inset.grid(True, which='both', alpha=0.3, linestyle='--')
         ax_inset.set_title(f'{soil_type}', fontsize=7)
 
-        fig_path = os.path.join(folder, 'figs', 'calibration_q.png')
+        fig_path = os.path.join(folder, 'figs', f'calibration_q_{ev_metric}.png')
         os.makedirs(os.path.dirname(fig_path), exist_ok=True)
         fig.savefig(fig_path, dpi=300, bbox_inches='tight')
         plt.close(fig)

@@ -799,6 +799,70 @@ class SoilGrid_2Dflow(object):
         return results
 
 
+def connectivity_scalar(gwl):
+    """
+    Lateral connectivity scalar as a function of groundwater level.
+
+    Represents how hydraulically connected the soil system is at a given
+    water table depth. When the water table is near the surface the system
+    is fully connected; when deep it is nearly isolated.
+
+    Piecewise function:
+        gwl >= -0.3 m :              scalar = 1.0   (fully connected)
+        -0.5 m < gwl < -0.3 m :     scalar = linear interpolation 1e-3 → 1.0
+        gwl <= -0.5 m :              scalar = 1e-8  (nearly disconnected)
+
+    Args:
+        gwl (float or array): groundwater level [m], <= 0
+
+    Returns:
+        scalar (float or array): connectivity multiplier [-], in [1e-8, 1.0]
+    """
+    gwl_high = -0.3   # [m] fully connected above this threshold
+    gwl_low  = -0.5   # [m] transition ends here
+    s_high   = 1.0    # scalar at gwl_high and above
+    s_low    = 1e-3   # scalar at gwl_low (transition lower end)
+    s_floor  = 1e-7   # scalar below gwl_low
+
+    # normalised position in transition zone: 0 at gwl_low, 1 at gwl_high
+    t = (gwl - gwl_low) / (gwl_high - gwl_low)
+    t = np.clip(t, 0.0, 1.0)
+    scalar = s_low + t * (s_high - s_low)  # linear from 1e-3 to 1.0
+
+    # apply floor below gwl_low
+    scalar = np.where(np.asarray(gwl) <= gwl_low, s_floor, scalar)
+
+    # return same type as input (scalar in, scalar out)
+    if np.ndim(gwl) == 0:
+        return float(scalar)
+    return scalar
+
+def connectivity_scalar_exp(gwl, gwl_high=-0.5, s_ref=1e-7, gwl_ref=-5.0):
+    """
+    Exponential decay connectivity scalar, clipped to 1.0 above gwl_high.
+    Anchored at gwl_high so the transition is smooth (no discontinuity):
+        gwl >= gwl_high :  scalar = 1.0
+        gwl <  gwl_high :  scalar = exp(k * (gwl - gwl_high))
+                        where k = ln(s_ref) / (gwl_ref - gwl_high)
+
+    Args:
+        gwl      (float or array): groundwater level [m], <= 0
+        gwl_high (float): threshold above which scalar = 1.0 [m].
+        s_ref    (float): scalar value at gwl_ref. Default 1e-7.
+        gwl_ref  (float): reference depth [m] where scalar = s_ref.
+
+    Returns:
+        scalar (float or array): connectivity multiplier [-], in (0, 1.0]
+    """ 
+
+    k = np.log(s_ref) / (gwl_ref - gwl_high)
+    scalar = np.exp(k * (np.asarray(gwl, dtype=float) - gwl_high))
+    scalar = np.where(np.asarray(gwl) >= gwl_high, 1.0, scalar)
+
+    if np.ndim(gwl) == 0:
+        return float(scalar)
+    return scalar
+
 def gwl_Wsto(z, pF, grid_step=-0.01, Ksat=None, root=False):
     """
     Builds scipy interpolation functions relating groundwater level (gwl) to
@@ -983,7 +1047,7 @@ def transmissivity(dz, Ksat, gwl):
     # sum over layers
     Tr = np.maximum(sum(Trans), 1e-4 / 86400)
 
-    return Tr
+    return Tr #* connectivity_scalar_exp(gwl)
 
 
 def gwl_Wsto_vectorized(z, pF, grid_step=-0.01, Ksat=None, root=False):
@@ -1201,9 +1265,9 @@ def transmissivity_vectorized(dz, Ksat, gwl):
 
     # Compute transmissivity of each layer
     Trans = Ksat * dz_sat  # Shape: (n_cells, n_layers)
-    
+
     #return np.nansum(Trans, axis=1)
-    return np.maximum(np.nansum(Trans, axis=1), 1e-5 / 86400)
+    return np.maximum(np.nansum(Trans, axis=1), 1e-5 / 86400) #* connectivity_scalar_exp(gwl)
 
 
 def wrc(pF, theta=None, psi=None, draw_pF=False):

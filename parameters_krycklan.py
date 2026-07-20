@@ -40,7 +40,7 @@ def parameters(folder=''):
             'cmask' : 'catchment_mask.asc',
             'mask': None, # 'cmask/streams', 'cmask', 'streams', None
             #'results_folder': r'/scratch/project_2000908/nousu/SpaFHy_RESULTS',
-            'results_folder': str(pathlib.Path(folder+f'/results/calibration_7_2026/{streams}_{reso}m')),
+            'results_folder': str(pathlib.Path(folder+f'/results/calibration_7b_2026/{streams}_{reso}m')),
             'save_interval': 366, # interval for writing results to file (decreases need for memory during computation)
             'variables':[ # list of output variables (rows can be commented away if not all variables are of interest)
                     #['parameters_lai_conif', 'leaf area index of conifers [m2 m-2]'],
