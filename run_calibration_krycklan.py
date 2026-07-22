@@ -15,7 +15,6 @@ if __name__ == '__main__':
     folder = os.path.join(io_path, 'krycklan')  # io repo
     catchment_no = 2 # C2 catchment
     runoff_folder = os.path.join(folder, 'obs', 'DISCHARGE')  # runoff data folder
-    print('runoff folder', runoff_folder)
 
     # evaluate or plot?
     evaluate = True

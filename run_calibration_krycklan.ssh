@@ -1,0 +1,25 @@
+#!/bin/bash
+#SBATCH --job-name=SpaFHy
+#SBATCH --account=project_2000908
+#SBATCH --partition=small
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem-per-cpu=8000
+#SBATCH --time=00:10:00
+#SBATCH --output=logs/SpaFHy_%j.out
+#SBATCH --error=logs/SpaFHy_%j.err
+
+# Usage: sbatch run_krycklan_calibration.sh
+
+# ── Environment ────────────────────────────────────────────────────────────────
+module purge
+module load python-data
+
+# ── Run ────────────────────────────────────────────────────────────────────────
+echo "Job started:  $(date)"
+echo "Node:         $SLURMD_NODENAME"
+echo "Job ID:       $SLURM_JOB_ID"
+
+srun python run_calibration_krycklan.py
+
+echo "Job finished: $(date)"
