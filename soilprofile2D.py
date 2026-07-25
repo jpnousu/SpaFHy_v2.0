@@ -1325,29 +1325,29 @@ def wrc(pF, theta=None, psi=None, draw_pF=False):
         y = psi_theta(np.atleast_1d(psi))  # 'Psi-->Theta'
 
     # draws pf-curve
-    if draw_pF:
-        Ts = Ts[0]; Tr = Tr[0]; alpha = alfa[0]; n = n[0]  
-        xx = -np.logspace(-4, 5, 100)  # cm
-        yy = psi_theta(xx)
-
-        #  field capacity and wilting point
-        fc = psi_theta(-1.0)
-        wp = psi_theta(-150.0)
-
-        fig = plt.figure(99)
-        fig.suptitle('vanGenuchten-Mualem WRC', fontsize=16)
-        ttext = r'$\theta_s=$' + str(Ts) + r', $\theta_r=$' + str(Tr) +\
-                r', $\alpha=$' + str(alfa) + ',n=' + str(n)
-
-        plt.title(ttext, fontsize=14)
-        plt.semilogx(-xx, yy, 'g-')
-        plt.semilogx(1, fc, 'ro', 150, wp, 'ro')  # fc, wp
-        plt.text(1, 1.1*fc, 'FC'), plt.text(150, 1.2*wp, 'WP')
-        plt.ylabel(r'$\theta$  $(m^3m^{-3})$', fontsize=14)
-        plt.xlabel('$\psi$ $(m)$', fontsize=14)
-        plt.ylim(0.8*Tr, min(1, 1.1*Ts))
-
-        del xx, yy
-        y = None
+#    if draw_pF:
+#        Ts = Ts[0]; Tr = Tr[0]; alpha = alfa[0]; n = n[0]  
+#        xx = -np.logspace(-4, 5, 100)  # cm
+#        yy = psi_theta(xx)
+#
+#        #  field capacity and wilting point
+#        fc = psi_theta(-1.0)
+#        wp = psi_theta(-150.0)
+#
+#        fig = plt.figure(99)
+#        fig.suptitle('vanGenuchten-Mualem WRC', fontsize=16)
+#        ttext = r'$\theta_s=$' + str(Ts) + r', $\theta_r=$' + str(Tr) +\
+#                r', $\alpha=$' + str(alfa) + ',n=' + str(n)
+#
+#        plt.title(ttext, fontsize=14)
+#        plt.semilogx(-xx, yy, 'g-')
+#        plt.semilogx(1, fc, 'ro', 150, wp, 'ro')  # fc, wp
+#        plt.text(1, 1.1*fc, 'FC'), plt.text(150, 1.2*wp, 'WP')
+#        plt.ylabel(r'$\theta$  $(m^3m^{-3})$', fontsize=14)
+#        plt.xlabel('$\psi$ $(m)$', fontsize=14)
+#        plt.ylim(0.8*Tr, min(1, 1.1*Ts))
+#
+#        del xx, yy
+#        y = None
     
     return y
