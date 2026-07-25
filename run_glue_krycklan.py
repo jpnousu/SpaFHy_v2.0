@@ -125,7 +125,10 @@ def summarize_best(summary, metric_name):
 
 
 if __name__ == '__main__':
-    folder = str(Path(__file__).resolve().parents[1] / 'SpaFHy_RUNS' / 'krycklan')
+    _project_folder = os.environ.get('PROJECT_FOLDER')
+    if _project_folder is None:
+        raise EnvironmentError('PROJECT_FOLDER is not set. Define it in .env or the environment.')
+    folder = str(Path(_project_folder) / 'krycklan')
     catchment_no = 2
     runoff_folder = os.path.join(folder, 'obs', 'DISCHARGE')
 

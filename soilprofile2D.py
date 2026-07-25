@@ -574,8 +574,8 @@ class SoilGrid_2Dflow(object):
                 for idx in bad_2d[:3]:
                     i, j = idx
                     k = i * self.cols + j
-                    print(f'    [{i},{j}] Htmp={Htmp[k]:.3f}, ele={self.ele[i,j]:.3f}, gwl={Htmp[k]-self.ele[i,j]:.3f}'
-                          f', alfa={alfa[k]:.4g}, Wsto={Wsto_deep[k]:.4g}, Wtso1={np.ravel(self.Wtso1_deep)[k]:.4g}')
+                    #print(f'    [{i},{j}] Htmp={Htmp[k]:.3f}, ele={self.ele[i,j]:.3f}, gwl={Htmp[k]-self.ele[i,j]:.3f}'
+                    #      f', alfa={alfa[k]:.4g}, Wsto={Wsto_deep[k]:.4g}, Wtso1={np.ravel(self.Wtso1_deep)[k]:.4g}')
                 a_d[bad_rhs] = 1.0
                 hs[bad_rhs] = Htmp[bad_rhs]
 
@@ -591,13 +591,13 @@ class SoilGrid_2Dflow(object):
                 Htmp_2d  = np.reshape(Htmp,  (self.rows, self.cols))
                 Htmp1_2d = np.reshape(Htmp1, (self.rows, self.cols))
                 problem_indices = np.argwhere(large_diff_2d)
-                print(f'Timestep: {self.tmstep}, it: {it+1}, cells with |dH|>0.5m: {len(problem_indices)}')
+                #print(f'Timestep: {self.tmstep}, it: {it+1}, cells with |dH|>0.5m: {len(problem_indices)}')
                 for idx in problem_indices[:2]:  # print at most 5 cells
                     i, j = idx
-                    print(f'  [{i},{j}] gwl: {Htmp_2d[i,j]-self.ele[i,j]:.3f} -> {Htmp1_2d[i,j]-self.ele[i,j]:.3f} m'
-                          f', ditch_h: {self.ditch_h[i,j]:.3f}'
-                          f', C_dd: {C_dd[i*self.cols+j]:.4f} m2/d'
-                          f', Tr: {self.Tr1[i,j]:.4f} m2/d')
+                    #print(f'  [{i},{j}] gwl: {Htmp_2d[i,j]-self.ele[i,j]:.3f} -> {Htmp1_2d[i,j]-self.ele[i,j]:.3f} m'
+                    #      f', ditch_h: {self.ditch_h[i,j]:.3f}'
+                    #      f', C_dd: {C_dd[i*self.cols+j]:.4f} m2/d'
+                    #      f', Tr: {self.Tr1[i,j]:.4f} m2/d')
                     
             if self.tmstep <= self.spinup_steps:
                 Htmp1 = np.where(np.abs(Htmp1-Htmp)> 2.0, Htmp + 0.5*np.sign(Htmp1-Htmp), Htmp1)
@@ -644,11 +644,11 @@ class SoilGrid_2Dflow(object):
 
         i, j = max_index
         deep_id_val = self.deep_id[i, j] if hasattr(self, 'deep_id') else 'N/A'
-        print(f'Timestep: {self.tmstep}, iterations: {it}, worst conv1: {conv1:.4f} m'
-              f' at [{i},{j}] gwl: {Htmp[i,j]-self.ele[i,j]:.3f} m'
-              f', ditch_h: {self.ditch_h[i,j]:.3f}'
-              f', Tr: {self.Tr1[i,j]:.4f} m2/d'
-              f', deep_id: {deep_id_val}')
+        #print(f'Timestep: {self.tmstep}, iterations: {it}, worst conv1: {conv1:.4f} m'
+        #      f' at [{i},{j}] gwl: {Htmp[i,j]-self.ele[i,j]:.3f} m'
+        #      f', ditch_h: {self.ditch_h[i,j]:.3f}'
+        #      f', Tr: {self.Tr1[i,j]:.4f} m2/d'
+        #      f', deep_id: {deep_id_val}')
         if it == 99:
             non_conv = np.abs(np.reshape(Htmp1, (self.rows, self.cols)) - Htmp) > crit
             non_conv &= np.isfinite(self.ele)

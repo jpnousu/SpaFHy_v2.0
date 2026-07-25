@@ -18,7 +18,8 @@ import pprint
 import os
 import sys
 from multiprocessing import Pool, cpu_count
-
+import warnings
+warnings.filterwarnings("ignore")
 eps = np.finfo(float).eps
 
 def worker(catch, catchment, create_ncf, create_spinup, output, folder):
