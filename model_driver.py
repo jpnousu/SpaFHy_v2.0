@@ -41,7 +41,7 @@ def parallel_driver(catchment, catchment_no, create_ncf=False, create_spinup=Fal
 
     return outputfile
 
-def driver(catchment, catchment_no, create_ncf=False, create_spinup=False, output=True, folder=''):
+def driver(catchment, catchment_no, create_ncf=False, create_spinup=False, output=True, folder='', psoil=None, save_outputs=True):
     """
     Model driver: sets up model, runs it and saves results to file (create_ncf==True)
     or return dictionary of results.
@@ -51,17 +51,19 @@ def driver(catchment, catchment_no, create_ncf=False, create_spinup=False, outpu
     running_time = time.time()
     parameters_module = importlib.import_module(f'parameters_{catchment}')
     parameters = parameters_module.parameters
-    pgen, _, _, _ = parameters(folder)
+    pgen, _, _, _ = parameters(folder, soil_params=psoil)
     pgen['mask'] = catchment_no
 
     # load and process parameters
-    pgen, pcpy, pbu, pds, cmask, ptop, gisinfo = preprocess_parameters(pgen, catchment, folder)
+    pgen, pcpy, pbu, pds, cmask, ptop, gisinfo = preprocess_parameters(pgen, catchment, folder, psoil=psoil)
 
-    # new directory for results files
-    results_folder = create_simulation_folder(pgen)
-    pgen['results_folder'] = results_folder
-    results_file = os.path.join(results_folder, pgen['ncf_file'])
-    pgen['ncf_file'] = results_file
+    # new directory for results files, unless this run is meant to stay in memory
+    outputfile = None
+    if save_outputs:
+        results_folder = create_simulation_folder(pgen)
+        pgen['results_folder'] = results_folder
+        results_file = os.path.join(results_folder, pgen['ncf_file'])
+        pgen['ncf_file'] = results_file
 
     # load and process forcing data
     forcing = preprocess_forcing(pgen)
@@ -71,7 +73,7 @@ def driver(catchment, catchment_no, create_ncf=False, create_spinup=False, outpu
 
     # results dictionary to accumulate simulation results
     # FOR ONE YEAR AT A TIME
-    if create_ncf:
+    if create_ncf and save_outputs:
         save_interval = min(pgen['save_interval'], Nsteps - Nspin)
         results = _create_results(pgen, cmask, save_interval)
     else:
@@ -89,7 +91,17 @@ def driver(catchment, catchment_no, create_ncf=False, create_spinup=False, outpu
     elif pgen['simtype'] == 'TOP':
         results = _append_results('parameters', ptop, results)
 
-    if create_ncf:
+    if save_outputs:
+        # this here so that we save params
+        dir_path = pgen['results_folder']
+        # Loop through each dictionary and save it
+        dicts = {'pgen': pgen, 'pcpy': pcpy, 'pbu': pbu, 'pds': pds, 'ptop': ptop}
+        for dict_name, dict_data in dicts.items():
+            file_path = os.path.join(dir_path, f'{dict_name}.txt')
+            with open(file_path, 'w') as file:
+                pprint.pprint(dict_data, stream=file, indent=4, width=100)
+
+    if create_ncf and save_outputs:
         ncf, outputfile = initialize_netcdf(
                 pgen=pgen,
                 cmask=cmask,
@@ -130,15 +142,6 @@ def driver(catchment, catchment_no, create_ncf=False, create_spinup=False, outpu
     interval = 0
     Nsaved = Nspin - 1
 
-    # this here so that we save params
-    dir_path = pgen['results_folder']
-    # Loop through each dictionary and save it
-    dicts = {'pgen': pgen, 'pcpy': pcpy, 'pbu': pbu, 'pds': pds, 'ptop': ptop}
-    for dict_name, dict_data in dicts.items():
-        file_path = os.path.join(dir_path, f'{dict_name}.txt')
-        with open(file_path, 'w') as file:
-            pprint.pprint(dict_data, stream=file, indent=4, width=100)
-    
     # initialize SpaFHy
     spa = SpaFHy(pgen, pcpy, pbu, pds, ptop)
 
@@ -159,7 +162,7 @@ def driver(catchment, catchment_no, create_ncf=False, create_spinup=False, outpu
             results = _append_results('canopy', canopy_results, results, k - Nsaved - 1)
             results = _append_results('bucket', bucket_results, results, k - Nsaved - 1)
 
-            if k in Nsaveresults and create_ncf:
+            if k in Nsaveresults and create_ncf and save_outputs:
                 interval += 1
                 print('*** Writing results to netCDF4-file, subset %.0f/%.0f ***' % (interval, len(Nsaveresults)+1))
                 # save forcing to results
@@ -167,11 +170,11 @@ def driver(catchment, catchment_no, create_ncf=False, create_spinup=False, outpu
                         date=slice(Nsaved + 1, k + 1))], results)
                 write_ncf(results=results, ncf=ncf, steps=[Nsaved + 1 - Nspin, k + 1 - Nspin])
                 Nsaved = k
-    if (create_spinup) and (k == Nsteps - 1):
+    if (create_spinup) and (k == Nsteps - 1) and save_outputs:
         write_ncf_spinup(results=results, pgen=pgen, ncf_spinup=ncf_spinup)
         print('*** Writing spinup to netCDF4-file')
 
-    if create_ncf:
+    if create_ncf and save_outputs:
         interval += 1
         print('*** Writing results to netCDF4-file, subset %.0f/%.0f ***' % (interval, len(Nsaveresults)+1))
         # save forcing to results
@@ -188,7 +191,7 @@ def driver(catchment, catchment_no, create_ncf=False, create_spinup=False, outpu
         if output:
             return results, spa, pcpy, pbu, ptop, cmask
 
-def preprocess_parameters(pgen, catchment, folder=''):
+def preprocess_parameters(pgen, catchment, folder='', psoil=None):
     """
     Reading gisdata if applicable and preprocesses parameters
     """
@@ -200,8 +203,13 @@ def preprocess_parameters(pgen, catchment, folder=''):
 
     parameters_module = importlib.import_module(f'parameters_{catchment}')
 
-    # Initialize parameters based on the catchment
+    # Initialize parameters based on the catchment (calls parameters() without soil_params,
+    # which resets module-level org/root/deep_properties to defaults)
     initialize_parameters(catchment, folder)
+
+    # Re-apply soil overrides so the correct psoil functions are captured below
+    if psoil is not None:
+        parameters_module._configure_soil_overrides(psoil)
 
     root_properties = parameters_module.root_properties
     org_properties = parameters_module.org_properties
