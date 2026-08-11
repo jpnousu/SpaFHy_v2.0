@@ -1,6 +1,8 @@
 import argparse
-import os
+import contextlib
 import importlib
+import io
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -13,6 +15,7 @@ from scripts.create_soil_params import create_soil_params
 load_dotenv()
 
 MINIMIZE_METRICS = {'rmse_tot', 'mbe_tot', 'rmse_sbsrf', 'mbe_sbsrf'}
+
 
 
 def resolve_model_root():
@@ -54,19 +57,26 @@ def build_parameter_dict(row, soil_type):
     }
 
 
-def save_run_outputs(output_ncf_path, q_df, params):
-    """Save calibration params and runoff comparison to results folder."""
-    out_dir = Path(output_ncf_path).parent
-
-    params_df = pd.DataFrame.from_dict(params, orient='index', columns=['value'])
-    params_df.index.name = 'parameter'
-    params_df.to_csv(out_dir / 'calibration_params.txt')
-    q_df.to_csv(out_dir / 'runoff.txt')
-
-    return out_dir
-
-
-def run_best_row(row, folder, catchment, catchment_no, q_obs, soil_type):
+def run_single_simulation(
+    row, folder, catchment, catchment_no, q_obs, soil_type, create_ncf=False
+):
+    """Run a single SpaFHy simulation for given parameters.
+    
+    Args:
+        row: DataFrame row with kmax, kmin, f parameters
+        folder: Path to model folder
+        catchment: Catchment name (e.g. 'krycklan')
+        catchment_no: Catchment number
+        q_obs: Observed discharge Series
+        soil_type: Soil type name (e.g. 'Medium')
+        create_ncf: Whether to create netcdf output
+        
+    Returns:
+        Tuple of (q_df, params, output_path_or_None)
+        - q_df: DataFrame with q_obs, q_sim, q_sim_srf, q_sim_sbsrf (spinup-trimmed)
+        - params: Dict with parameters and 6 metrics (kge/rmse/mbe × tot/sbsrf)
+        - output_path: NetCDF path if create_ncf=True, else None
+    """
     param_sets = build_parameter_dict(row, soil_type)
 
     psoil = create_soil_params(
@@ -83,33 +93,35 @@ def run_best_row(row, folder, catchment, catchment_no, q_obs, soil_type):
     spinup_steps = (pd.to_datetime(pgen['spinup_end']) - pd.to_datetime(pgen['start_date'])).days + 1
     sim_dates = dates[spinup_steps:]
 
-    # Run model with ncf output (like calibration script)
-    outputfile = driver(
-        catchment=catchment,
-        catchment_no=catchment_no,
-        create_ncf=True,
-        create_spinup=False,
-        output=True,
-        folder=folder,
-        psoil=psoil,
-        save_outputs=True,
-    )
+    with contextlib.redirect_stdout(io.StringIO()):
+        result_or_tuple = driver(
+            catchment=catchment,
+            catchment_no=catchment_no,
+            create_ncf=create_ncf,
+            create_spinup=False,
+            output=True,
+            folder=folder,
+            psoil=psoil,
+            save_outputs=create_ncf,
+        )
 
-    # Handle both string and list return types
-    if isinstance(outputfile, (list, tuple)):
-        output_path = outputfile[0]
+    if create_ncf:
+        if isinstance(result_or_tuple, (list, tuple)):
+            output_path = result_or_tuple[0]
+        else:
+            output_path = result_or_tuple
+        surface_runoff, netflow_to_ditch, netflow_to_lake = extract_discharge_results_2D(output_path)
     else:
-        output_path = outputfile
+        results, _, _, _, _, _ = result_or_tuple
+        output_path = None
+        surface_runoff, netflow_to_ditch, netflow_to_lake = extract_runoff_from_results(results)
 
-    # Extract discharge from netcdf
-    surface_runoff, netflow_to_ditch, netflow_to_lake = extract_discharge_results_2D(output_path)
     q_sim_tot = surface_runoff + netflow_to_ditch + netflow_to_lake
     q_sim_sbsrf = netflow_to_ditch + netflow_to_lake
 
-    # Build dataframe with spinup trimming using pd.concat like calibration script
     q_df = pd.concat(
         {
-            'q_obs': q_obs['Q'],
+            'q_obs': q_obs.reindex(sim_dates),
             'q_sim': pd.Series(q_sim_tot, index=sim_dates),
             'q_sim_srf': pd.Series(surface_runoff, index=sim_dates),
             'q_sim_sbsrf': pd.Series(q_sim_sbsrf, index=sim_dates),
@@ -131,7 +143,138 @@ def run_best_row(row, folder, catchment, catchment_no, q_obs, soil_type):
         'mbe_sbsrf': mbe(q_df['q_obs'], q_df['q_sim_sbsrf']),
     }
 
+    return q_df, params, output_path
+
+
+def extract_runoff_from_results(results):
+    """Extract runoff components from model results dict."""
+    import numpy as np
+    surface_runoff = np.nanmean(results['bucket_surface_runoff'], axis=(1, 2))
+    netflow_to_ditch = np.nanmean(results['deep_netflow_to_ditch'], axis=(1, 2))
+    netflow_to_lake = np.nanmean(results['deep_netflow_to_lake'], axis=(1, 2))
+    return surface_runoff, netflow_to_ditch, netflow_to_lake
+
+
+def find_existing_ncf_files(output_folder, suitable_df, soil_type):
+    """Find which simulations already have netcdf files in output_folder.
+    
+    Returns:
+        Set of indices that have existing ncf files
+    """
+    if not Path(output_folder).exists():
+        return set()
+    
+    output_folder = Path(output_folder)
+    existing = set()
+    
+    for idx, (sim_idx, row) in enumerate(suitable_df.iterrows()):
+        kmax = float(row[f'kmax_{soil_type}'])
+        kmin = float(row[f'kmin_{soil_type}'])
+        f = float(row[f'f_{soil_type}'])
+        pattern = f"kmax_{kmax:.6e}_kmin_{kmin:.6e}_f_{f:.6f}*.nc"
+        
+        if list(output_folder.glob(pattern)):
+            existing.add(sim_idx)
+    
+    return existing
+
+
+def run_batch_simulations(
+    suitable_df,
+    folder,
+    q_obs,
+    output_folder=None,
+    save_ncf=False,
+    catchment='krycklan',
+    catchment_no=2,
+    soil_type='Medium',
+    skip_existing=True,
+    verbose=True,
+):
+    """Run batch of SpaFHy simulations for suitable parameter sets.
+    
+    Args:
+        suitable_df: DataFrame of suitable simulations (from GLUE analysis)
+        folder: Path to model folder
+        q_obs: Observed discharge Series
+        output_folder: Folder to save netcdf outputs (if save_ncf=True)
+        save_ncf: Whether to save netcdf files
+        catchment: Catchment name
+        catchment_no: Catchment number
+        soil_type: Soil type name
+        skip_existing: Skip re-running if netcdf already exists
+        verbose: Print progress messages
+        
+    Returns:
+        Dict mapping row index → (q_df, params, output_path_or_None)
+    """
+    if save_ncf and output_folder is None:
+        raise ValueError("output_folder required when save_ncf=True")
+    
+    if save_ncf:
+        output_folder = Path(output_folder)
+        output_folder.mkdir(parents=True, exist_ok=True)
+    
+    existing = set()
+    if skip_existing and save_ncf:
+        existing = find_existing_ncf_files(output_folder, suitable_df, soil_type)
+        if existing:
+            if verbose:
+                print(f"Found {len(existing)} existing simulations in {output_folder}")
+    
+    results = {}
+    total = len(suitable_df)
+    
+    for idx, (sim_idx, row) in enumerate(suitable_df.iterrows(), 1):
+        if skip_existing and sim_idx in existing:
+            if verbose:
+                print(f"[{idx}/{total}] Skipping existing simulation (index {sim_idx})")
+            results[sim_idx] = None
+            continue
+        
+        if verbose:
+            print(f"[{idx}/{total}] Running simulation (index {sim_idx})...")
+        
+        q_df, params, output_path = run_single_simulation(
+            row=row,
+            folder=folder,
+            catchment=catchment,
+            catchment_no=catchment_no,
+            q_obs=q_obs,
+            soil_type=soil_type,
+            create_ncf=save_ncf,
+        )
+        
+        results[sim_idx] = (q_df, params, output_path)
+    
+    return results
+
+
+def save_run_outputs(output_ncf_path, q_df, params):
+    """Save calibration params and runoff comparison to results folder."""
+    out_dir = Path(output_ncf_path).parent
+
+    params_df = pd.DataFrame.from_dict(params, orient='index', columns=['value'])
+    params_df.index.name = 'parameter'
+    params_df.to_csv(out_dir / 'calibration_params.txt')
+    q_df.to_csv(out_dir / 'runoff.txt')
+
+    return out_dir
+
+
+def run_best_row(row, folder, catchment, catchment_no, q_obs, soil_type):
+    """Run best row and save outputs (legacy CLI function)."""
+    q_df, params, output_path = run_single_simulation(
+        row=row,
+        folder=folder,
+        catchment=catchment,
+        catchment_no=catchment_no,
+        q_obs=q_obs,
+        soil_type=soil_type,
+        create_ncf=True,
+    )
     return save_run_outputs(output_path, q_df, params)
+
 
 
 def parse_args():
