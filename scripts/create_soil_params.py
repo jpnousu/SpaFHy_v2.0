@@ -67,6 +67,14 @@ _MAX_DEPTH = {
     'Coarse':   10.0,
 }
 
+_CONST_SURF_KMAX = {             # depth [m] over which Ksat is held constant at Kmax before exponential decay
+    'Bedrock':  0.0,
+    'Peat':     0.0,
+    'Fine':     0.0,
+    'Medium':   0.3,
+    'Coarse':   0.0,
+}
+
 # van Genuchten / ThetaS – Sources:
 #   Bedrock – assumed
 #   Peat    – Leppä et al. 2020, Sphagnum
@@ -126,6 +134,8 @@ _PF_WR = {
 def create_soil_params(
     kmax_values=None,
     f_values=None,
+    const_surf_values=None,
+    max_depth_values=None,
     write=True,
     verbose=True,
 ):
@@ -140,6 +150,12 @@ def create_soil_params(
     f_values : dict, optional
         Ksat exponential decay coefficient [m-1] per soil type.
         Defaults to the values defined at module level (_DEFAULT_F).
+    const_surf_values : dict, optional
+        Depth [m] over which Ksat is held constant at Kmax per soil type.
+        Defaults to the values defined at module level (_CONST_SURF_KMAX).
+    max_depth_values : dict, optional
+        Maximum soil profile depth [m] per soil type.
+        Defaults to the values defined at module level (_MAX_DEPTH).
     write : bool
         If True (default), write soil_params.py to SpaFHy_v2.0/.
     verbose : bool
@@ -157,6 +173,14 @@ def create_soil_params(
     f = _DEFAULT_F.copy()
     if f_values:
         f.update(f_values)
+
+    const_surf_depth = _CONST_SURF_KMAX.copy()
+    if const_surf_values:
+        const_surf_depth.update(const_surf_values)
+
+    max_depth = _MAX_DEPTH.copy()
+    if max_depth_values:
+        max_depth.update(max_depth_values)
 
     vertical_ksat_factor = 0.1
     exponential_ThetaS   = True
@@ -190,14 +214,15 @@ def create_soil_params(
     exp_params = {}
     for soil_type, props in deep_properties.items():
         exp_params[soil_type] = {
-            'deep_id':    props['deep_id'],
-            'Kmax':       kmax[soil_type],
-            'f':          f[soil_type],
-            'Kmin':       _KMIN[soil_type],
-            'max_depth':  _MAX_DEPTH[soil_type],
-            'ThetaS_max': _THETAS_MAX[soil_type],
-            'ThetaS_min': _THETAS_MIN[soil_type],
-            'f_theta':    _F_THETA[soil_type],
+            'deep_id':          props['deep_id'],
+            'Kmax':             kmax[soil_type],
+            'f':                f[soil_type],
+            'Kmin':             _KMIN[soil_type],
+            'max_depth':        max_depth[soil_type],
+            'ThetaS_max':       _THETAS_MAX[soil_type],
+            'ThetaS_min':       _THETAS_MIN[soil_type],
+            'f_theta':          _F_THETA[soil_type],
+            'const_surf_depth': const_surf_depth[soil_type],
         }
 
     # ── Discretize deep_properties_exp ────────────────────────────────────────
@@ -208,7 +233,13 @@ def create_soil_params(
         deep_z = np.round(-depth_positive, 3).tolist()
         n_layers = len(deep_z)
 
-        deep_ksat_raw = (params['Kmax'] - params['Kmin']) * np.exp(-params['f'] * depth_positive) + params['Kmin']
+        # Ksat constant at Kmax down to const_surf_depth, then exponential decay shifted below it
+        below_const = np.maximum(depth_positive - params['const_surf_depth'], 0.0)
+        deep_ksat_raw = np.where(
+            depth_positive <= params['const_surf_depth'],
+            params['Kmax'],
+            (params['Kmax'] - params['Kmin']) * np.exp(-params['f'] * below_const) + params['Kmin'],
+        )
         deep_ksat = []
         for v in deep_ksat_raw.tolist():
             deep_ksat.append(round_sig(v, sig_figs=3))

@@ -18,29 +18,32 @@ if __name__ == '__main__':
 
     # evaluate or plot?
     evaluate = True
-    ev_metric = 'rmse'
+    ev_metric = 'kge'
     plot = True
 
     ### CALIBRATION SETUP ###
     # soil type to calibrate (add more blocks below for additional soil types)
     soil_type = 'Medium'
+
     # f values for calibration
-    f_range = np.array([6., 8., 12., 14., 16.]) # up to crazy range
-    #f_range = np.array([2., 4., 6., 8., 10., 12.]) # reasonable range
-    f_range = np.array([14.]) # small test
+    f_range = np.array([12., 16., 20., 24.]) # up to crazy range
+    #f_range = np.array([14.]) # small test
+
     # kmax values for calibration
-    kmax_range = np.array([1e-5, 1e-4, 1e-3, 1e-2, 0.1]) # up to crazy range
-    #kmax_range = np.array([1e-5, 5e-4, 1e-4, 5e-4]) # reasonable range
-    kmax_range = np.array([0.1, 0.01]) # small test
+    kmax_range = np.array([1e-4, 1e-3, 1e-2]) # up to crazy range
+    #kmax_range = np.array([0.1, 0.01]) # small test
+    kmax_depth = np.array([0.3, 0.6])
+    max_depth = np.array([2.])
+
     # kmin values for calibration
-    kmin_range = np.array([1e-9, 1e-8, 1e-7, 1e-6]) # 
-    #kmin_range = np.array([1e-7, 1e-6, 1e-5, 5e-5]) # reasonable range
-    kmin_range = np.array([1e-7]) # small test
-    # all possible combinations of kmax, kmin and f values (kmin must be strictly less than kmax)
+    kmin_range = np.array([1e-9])
+    #kmin_range = np.array([1e-9]) # small test
+    
+    # all possible combinations of kmax, kmin, f, kmax_depth and max_depth values (kmin must be strictly less than kmax)
     combinations = []
-    for kmax, kmin, f in itertools.product(kmax_range, kmin_range, f_range):
+    for kmax, kmin, f, depth, maxd in itertools.product(kmax_range, kmin_range, f_range, kmax_depth, max_depth):
         if kmin < kmax:
-            combinations.append((kmax, kmin, f))
+            combinations.append((kmax, kmin, f, depth, maxd))
     print(f"Total combinations: {len(combinations)}")
 
     # reading runoff data
@@ -48,14 +51,16 @@ if __name__ == '__main__':
 
     out_dirs = []  # track simulation folders for post-loop evaluation
 
-    for i, (kmax, kmin, f) in enumerate(combinations, start=1):
+    for i, (kmax, kmin, f, depth, maxd) in enumerate(combinations, start=1):
         kmax_values = {soil_type: kmax}
         kmin_values = {soil_type: kmin}
         f_values = {soil_type: f}
+        const_surf_values = {soil_type: depth}
+        max_depth_values = {soil_type: maxd}
 
         # Write soil parameters and run the model
         print(f"\nRunning simulation {i}/{len(combinations)}")
-        create_soil_params(kmax_values, f_values, write=True, verbose=False)
+        create_soil_params(kmax_values, f_values, const_surf_values, max_depth_values, write=True, verbose=False)
         outputfile = parallel_driver(catchment='krycklan', catchment_no=catchment_no, create_ncf=True, create_spinup=False, output=True, folder=folder)
 
         # Read simulated discharge and combine with observations
@@ -83,6 +88,10 @@ if __name__ == '__main__':
             params[f'kmin_{st}'] = val
         for st, val in f_values.items():
             params[f'f_{st}'] = val
+        for st, val in const_surf_values.items():
+            params[f'kmax_depth_{st}'] = val
+        for st, val in max_depth_values.items():
+            params[f'max_depth_{st}'] = val
         params['kge_tot']    = kge_val_tot
         params['rmse_tot']   = rmse_val_tot
         params['mbe_tot']    = mbe_val_tot
@@ -113,6 +122,8 @@ if __name__ == '__main__':
         print(f'  {"kmax_" + soil_type:<20} {kmax_range}')
         print(f'  {"kmin_" + soil_type:<20} {kmin_range}')
         print(f'  {"f_" + soil_type:<20} {f_range}')
+        print(f'  {"kmax_depth_" + soil_type:<20} {kmax_depth}')
+        print(f'  {"max_depth_" + soil_type:<20} {max_depth}')
         print(f'  Total combinations: {len(combinations)}')
         print(f'\n--- Best {ev_metric.upper()} (total runoff) ---')
         best = summary.loc[best_run_tot]
@@ -186,10 +197,12 @@ if __name__ == '__main__':
         z = np.linspace(0, max_depth, 500)
         ax_inset = ax.inset_axes([0.3, 0.6, 0.2, 0.3])
         for run, row in summary.iterrows():
-            kmax_r = float(row[f'kmax_{soil_type}'])
-            kmin_r = float(row[f'kmin_{soil_type}'])
-            f_r    = float(row[f'f_{soil_type}'])
-            K_r = (kmax_r - kmin_r) * np.exp(-f_r * z) + kmin_r
+            kmax_r  = float(row[f'kmax_{soil_type}'])
+            kmin_r  = float(row[f'kmin_{soil_type}'])
+            f_r     = float(row[f'f_{soil_type}'])
+            depth_r = float(row[f'kmax_depth_{soil_type}'])
+            z_below = np.maximum(z - depth_r, 0.0)
+            K_r = np.where(z <= depth_r, kmax_r, (kmax_r - kmin_r) * np.exp(-f_r * z_below) + kmin_r)
             is_best_tot   = (run == best_run_tot)
             is_best_sbsrf = (run == best_run_sbsrf)
             is_best = is_best_tot or is_best_sbsrf

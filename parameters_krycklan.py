@@ -10,7 +10,7 @@ from datetime import datetime
 
 reso = 20
 streams = 'channels'
-#streams = '5haStreams'
+streams = '5haStreams'
 
 def parameters(folder=''):
 
@@ -227,7 +227,7 @@ def parameters(folder=''):
             'maxpond': 0.0, # max ponding depth (m)
             # rootzone layer
             'root_id': 'soil_grouped.asc', # uniform (float) OR path to grid in gispath (str)     
-            'root_depth': 0.3, # depth of rootzone layer (m)
+            'root_depth': 0.3, #0.3, # depth of rootzone layer (m)
             'root_sat': 0.6, # saturation ratio (-)
             'root_fc': 0.33, # field capacity
             'root_poros': 0.448, #  porosity

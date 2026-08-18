@@ -190,7 +190,7 @@ class SoilGrid_2Dflow(object):
 
         # air volume and returnflow
         self.airv_deep = np.maximum(0.0, self.Wsto_deep_max - self.Wsto_deep)
-        #self.qr = np.full_like(self.gwl, 0.0)
+        self.qr = np.full_like(self.gwl, 0.0)
 
         # parameters for 2D solution
         # parameters for solving
@@ -724,7 +724,7 @@ class SoilGrid_2Dflow(object):
                         self.deepmoist[i,j] = self.gwl_to_rootmoist[i,j](self.gwl[i,j])
 
         # The difference is the return flow to bucketgrid
-        qr = Wsto_before_qr - self.Wsto_deep
+        self.qr = Wsto_before_qr - self.Wsto_deep
 
         # air volume
         self.airv_deep = np.maximum(0.0, self.Wsto_deep_max - self.Wsto_deep)
@@ -733,11 +733,11 @@ class SoilGrid_2Dflow(object):
             # Lakes are constant-head: netflow to lake from mass balance
             netflow_to_lake = np.where(
                 (self.lake_h < -eps) & (H_neighbours_2d > self.ele + self.lake_h),
-                state0 - np.reshape(S_dd,(self.rows,self.cols)) - self.Wsto_deep - qr - lateral_flow * dt,
+                state0 - np.reshape(S_dd,(self.rows,self.cols)) - self.Wsto_deep - self.qr - lateral_flow * dt,
                 0.0)
 
             # mass balance error [m]
-            mbe = (state0 - np.reshape(S_dd,(self.rows,self.cols)) - self.Wsto_deep - qr - lateral_flow * dt
+            mbe = (state0 - np.reshape(S_dd,(self.rows,self.cols)) - self.Wsto_deep - self.qr - lateral_flow * dt
                    - netflow_to_lake * dt)
             mbe = np.where(self.lake_h < -eps, 0.0, mbe)
 
@@ -756,7 +756,7 @@ class SoilGrid_2Dflow(object):
                     'netflow_to_lake': netflow_to_lake * 1e3 / dt,  # [mm d-1]
                     'water_closure': mbe * 1e3 / dt,  # [mm d-1]
                     'water_storage': Wsto_deep_out * 1e3,  # [mm]
-                    'return_flow': qr * 1e3,  # [mm]
+                    'return_flow': self.qr * 1e3,  # [mm]
                     'moisture_deep': self.deepmoist * self.cmask,  # [m3 m-3]
                     'transmissivity': np.nanmean([TrW, TrE, TrN, TrS], axis=0),  # [m2 d-1]
                     'transmissivity_W': TrW,  # [m2 d-1]
@@ -771,7 +771,7 @@ class SoilGrid_2Dflow(object):
             netflow_to_ditch += np.where(self.ditch_h < -eps, Wsto_before_qr - self.Wsto_deep, 0.)
 
             # mass balance error [m]
-            mbe = (state0 - self.Wsto_deep - qr - lateral_flow * dt)
+            mbe = (state0 - self.Wsto_deep - self.qr - lateral_flow * dt)
             mbe = np.where(self.ditch_h < -eps, 0.0, mbe)
 
             # outputs multiplied by cmask
@@ -787,7 +787,7 @@ class SoilGrid_2Dflow(object):
                     'netflow_to_ditch': netflow_to_ditch * 1e3 / dt,  # [mm d-1]
                     'water_closure': mbe * 1e3 / dt,  # [mm d-1]
                     'water_storage': Wsto_deep_out * 1e3,  # [mm]
-                    'return_flow': qr * 1e3,  # [mm]
+                    'return_flow': self.qr * 1e3,  # [mm]
                     'moisture_deep': self.deepmoist * self.cmask,  # [m3 m-3]
                     'transmissivity': np.nanmean([TrW, TrE, TrN, TrS], axis=0),  # [m2 d-1]
                     'transmissivity_W': TrW,  # [m2 d-1]
