@@ -142,24 +142,30 @@ class SpaFHy():
 
         if self.simtype == '2D':
             # run deep soil (2D) water balance
-            RR = self.bu.drain
-            deep_results = self.ds.run_timestep(
-                dt=self.dt / 86400.,
-                RR=RR)
+            #RR = self.bu.drain
+            #deep_results = self.ds.run_timestep(
+            #    dt=self.dt / 86400.,
+            #    RR=RR)
 
             # run CanopyGrid
             canopy_results = self.cpy.run_timestep(
                     doy, self.dt, ta, prec, rg, par, vpd, U=u, CO2=co2,
                     beta=self.bu.Ree, Rew=self.bu.Rew, P=101300.0)
-
+            
+            QR = self.ds.qr
             # run BucketGrid
             bucket_results = self.bu.run_timestep(
                 dt=self.dt,
                 rr=1e-3*canopy_results['potential_infiltration'],
                 tr=1e-3*canopy_results['transpiration'],
                 evap=1e-3*canopy_results['forestfloor_evaporation'],
-                retflow=1e-3*deep_results['return_flow'],
+                retflow=QR,
                 airv_deep=self.ds.airv_deep) 
+
+            RR = self.bu.drain
+            deep_results = self.ds.run_timestep(
+                dt=self.dt / 86400.,
+                RR=RR)
 
             return deep_results, canopy_results, bucket_results
 
