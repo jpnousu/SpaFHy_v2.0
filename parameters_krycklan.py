@@ -12,7 +12,38 @@ reso = 20
 streams = 'channels'
 streams = '5haStreams'
 
-def parameters(folder=''):
+
+def _constant_properties(properties):
+    def _properties():
+        return properties
+
+    return _properties
+
+def _configure_soil_overrides(soil_params=None):
+    """Optionally replace the default soil property functions in this module."""
+    global org_properties, root_properties, deep_properties
+
+    if soil_params is not None:
+        org_properties = _constant_properties(soil_params['org'])
+        root_properties = _constant_properties(soil_params['root'])
+        deep_properties = _constant_properties(soil_params['deep'])
+        return
+
+    try:
+        import parameters_krycklan_soil as _sp
+
+        if hasattr(_sp, 'org_properties'):
+            org_properties = _sp.org_properties
+        if hasattr(_sp, 'root_properties'):
+            root_properties = _sp.root_properties
+        if hasattr(_sp, 'deep_properties'):
+            deep_properties = _sp.deep_properties
+    except ImportError:
+        pass
+
+
+def parameters(folder='', soil_params=None):
+    _configure_soil_overrides(soil_params)
 
     pgen = {'description': 'final_run',  # description written in result file
             'simtype': '2D', # 1D, TOP, 2D,
@@ -482,19 +513,3 @@ def org_properties():
         }
     return orgp
 
-
-# ---------------------------------------------------------------------------
-# Override soil property functions with soil_params.py if it exists alongside
-# this file.  Only functions actually present in soil_params.py are replaced,
-# so a partial soil_params.py (e.g. only deep_properties) works fine too.
-# ---------------------------------------------------------------------------
-try:
-    import parameters_krycklan_soil as _sp
-    if hasattr(_sp, 'org_properties'):
-        org_properties = _sp.org_properties
-    if hasattr(_sp, 'root_properties'):
-        root_properties = _sp.root_properties
-    if hasattr(_sp, 'deep_properties'):
-        deep_properties = _sp.deep_properties
-except ImportError:
-    pass

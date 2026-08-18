@@ -8,7 +8,7 @@ from the parameter definitions below.
 Usage:
     python create_soil_params.py                    # uses default parameters
     from create_soil_params import create_soil_params
-    create_soil_params(kmax_values={...}, f_values={...})  # override for calibration
+    create_soil_params(kmax_values={...}, kmin_values={...}, f_values={...})  # override for calibration
 
 Output:
     SpaFHy_v2.0/soil_params.py
@@ -133,6 +133,7 @@ _PF_WR = {
 
 def create_soil_params(
     kmax_values=None,
+    kmin_values=None,
     f_values=None,
     const_surf_values=None,
     max_depth_values=None,
@@ -147,6 +148,9 @@ def create_soil_params(
     kmax_values : dict, optional
         Surface saturated hydraulic conductivity [m/s] per soil type.
         Defaults to the values defined at module level (_DEFAULT_KMAX).
+    kmin_values : dict, optional
+        Minimum saturated hydraulic conductivity [m/s] per soil type.
+        Defaults to the values defined at module level (_KMIN).
     f_values : dict, optional
         Ksat exponential decay coefficient [m-1] per soil type.
         Defaults to the values defined at module level (_DEFAULT_F).
@@ -169,6 +173,10 @@ def create_soil_params(
     kmax = _DEFAULT_KMAX.copy()
     if kmax_values:
         kmax.update(kmax_values)
+
+    kmin = _KMIN.copy()
+    if kmin_values:
+        kmin.update(kmin_values)
 
     f = _DEFAULT_F.copy()
     if f_values:
