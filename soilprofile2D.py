@@ -243,7 +243,7 @@ class SoilGrid_2Dflow(object):
         strides = a.strides + (a.strides[-1],)
         return np.lib.stride_tricks.as_strided(a, shape=shape, strides=strides)
 
-    def run_timestep(self, dt=1.0, RR=0.0):
+    def run_timestep(self, dt=1.0, RR=0.0, TR=0.0):
 
         """
         Advances the 2D groundwater flow model by one timestep.
@@ -261,6 +261,10 @@ class SoilGrid_2Dflow(object):
         Args:
             dt  (float): Timestep duration [days]. Default 1.0 (daily).
             RR  (array): Drainage input from BucketGrid to the saturated zone [m].
+            TR  (array): Transpiration sink taken directly from the soil water
+                storage [m]; used when BucketGrid/BucketOLFGrid is run without an
+                explicit root zone (pgen['explicit_rootzone'] = False). Capped so
+                storage cannot be drawn below zero.
 
         Returns:
             dict with keys:
@@ -270,6 +274,7 @@ class SoilGrid_2Dflow(object):
                 'water_closure'       [mm d-1]: mass balance error (should be ~0)
                 'water_storage'       [mm]:     deep soil water storage
                 'return_flow'         [mm]:     return flow to BucketGrid (when gwl > 0)
+                'transpiration'       [mm]:     transpiration actually extracted (after capping)
                 'transmissivity'      [m2 d-1]: mean transmissivity of the grid
         """
 
@@ -284,8 +289,12 @@ class SoilGrid_2Dflow(object):
     
         self.tmstep += 1
 
-        # for computing mass balance later, RR: drainage from bucketgrid
-        S = RR
+        # transpiration cannot draw storage below zero (Rew already limits demand upstream in CanopyGrid)
+        TR = np.minimum(TR, np.maximum(self.Wsto_deep, 0.0))
+        self.tr_deep = TR
+
+        # for computing mass balance later, RR: drainage from bucketgrid; TR: transpiration sink
+        S = RR - TR
         S[np.isnan(S)] = 0.0
 
         state0 = self.Wsto_deep + S # [m]
@@ -757,6 +766,7 @@ class SoilGrid_2Dflow(object):
                     'water_closure': mbe * 1e3 / dt,  # [mm d-1]
                     'water_storage': Wsto_deep_out * 1e3,  # [mm]
                     'return_flow': self.qr * 1e3,  # [mm]
+                    'transpiration': self.tr_deep * self.cmask * 1e3,  # [mm]
                     'moisture_deep': self.deepmoist * self.cmask,  # [m3 m-3]
                     'transmissivity': np.nanmean([TrW, TrE, TrN, TrS], axis=0),  # [m2 d-1]
                     'transmissivity_W': TrW,  # [m2 d-1]
@@ -788,6 +798,7 @@ class SoilGrid_2Dflow(object):
                     'water_closure': mbe * 1e3 / dt,  # [mm d-1]
                     'water_storage': Wsto_deep_out * 1e3,  # [mm]
                     'return_flow': self.qr * 1e3,  # [mm]
+                    'transpiration': self.tr_deep * self.cmask * 1e3,  # [mm]
                     'moisture_deep': self.deepmoist * self.cmask,  # [m3 m-3]
                     'transmissivity': np.nanmean([TrW, TrE, TrN, TrS], axis=0),  # [m2 d-1]
                     'transmissivity_W': TrW,  # [m2 d-1]

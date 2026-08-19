@@ -77,6 +77,12 @@ class SpaFHy():
 
         self.dt = pgen['dt']  # s
         self.simtype = pgen['simtype']
+        self.explicit_rootzone = pgen.get('explicit_rootzone', True)
+
+        if not self.explicit_rootzone and self.simtype != '2D':
+            raise ValueError(
+                "pgen['explicit_rootzone'] = False requires simtype='2D' "
+                "(only SoilGrid_2Dflow can take over the root-zone transpiration sink)")
 
         if self.simtype == '2D':
             flatten = False
@@ -103,7 +109,7 @@ class SpaFHy():
             from bucketolfgrid import BucketOLFGrid as BucketGrid
         else:
             from bucketgrid import BucketGrid
-        self.bu = BucketGrid(pbu, pgen['org_drain'])
+        self.bu = BucketGrid(pbu, pgen['org_drain'], self.explicit_rootzone)
 
         """--- initialize CanopyGrid ---"""
         self.cpy = CanopyGrid(pcpy, pcpy['state'], dist_rad_file=pgen['spatial_radiation_file'])
@@ -147,10 +153,20 @@ class SpaFHy():
             #    dt=self.dt / 86400.,
             #    RR=RR)
 
+            # Rew (root-zone stomatal control): from BucketGrid's root zone, or,
+            # when explicit_rootzone=False, from SoilGrid_2Dflow's gwl-based
+            # near-surface moisture diagnostic using the same Fc/Wp thresholds
+            if self.explicit_rootzone:
+                Rew = self.bu.Rew
+            else:
+                Rew = np.clip(
+                    (self.ds.deepmoist - self.bu.Wp_root) / (self.bu.Fc_root - self.bu.Wp_root + eps),
+                    0.0, 1.0)
+
             # run CanopyGrid
             canopy_results = self.cpy.run_timestep(
                     doy, self.dt, ta, prec, rg, par, vpd, U=u, CO2=co2,
-                    beta=self.bu.Ree, Rew=self.bu.Rew, P=101300.0)
+                    beta=self.bu.Ree, Rew=Rew, P=101300.0)
             
             QR = self.ds.qr
             # run BucketGrid
@@ -163,9 +179,13 @@ class SpaFHy():
                 airv_deep=self.ds.airv_deep) 
 
             RR = self.bu.drain
+            # transpiration is taken from the bucket root zone (default) or,
+            # when explicit_rootzone=False, directly from the deep soil storage
+            TR = 0.0 if self.explicit_rootzone else 1e-3*canopy_results['transpiration']
             deep_results = self.ds.run_timestep(
                 dt=self.dt / 86400.,
-                RR=RR)
+                RR=RR,
+                TR=TR)
 
             return deep_results, canopy_results, bucket_results
 

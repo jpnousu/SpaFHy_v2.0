@@ -45,7 +45,7 @@ class BucketOLFGrid(object):
     single cell-by-cell loop ordered by flow accumulation.
     """
 
-    def __init__(self, spara, org_drain):
+    def __init__(self, spara, org_drain, explicit_rootzone=True):
         """
         Args:
             spara (dict): Soil parameter dictionary. All values are np.arrays
@@ -90,6 +90,13 @@ class BucketOLFGrid(object):
             org_drain (bool): If True, the organic top layer drains gravitationally
                 to the root zone using Campbell hydraulic conductivity. If False,
                 the organic layer acts as an interception store up to field capacity.
+            explicit_rootzone (bool): If True (default), simulates the root zone
+                bucket as described above. If False, only the organic top layer is
+                simulated; water passing below it is handed directly to
+                SoilGrid_2Dflow as recharge, and transpiration is expected to be
+                applied there instead of here (see spafhy.py). 'root_fc'/'root_wp'
+                are still required in this mode (used to derive Rew from deep soil
+                moisture); other root_* keys are unused.
         """
 
         # --- overland flow / D8 routing setup ---
@@ -119,6 +126,7 @@ class BucketOLFGrid(object):
 
         # --- bucket model setup ---
         self.org_drain = org_drain
+        self.explicit_rootzone = explicit_rootzone
         self.MaxPond   = spara['maxpond']
 
         # organic top layer
@@ -136,31 +144,36 @@ class BucketOLFGrid(object):
 
         self.MaxStoTopInt = self.Fc_top * self.D_top   # interception capacity
 
-        # root zone layer
-        self.D_root     = spara['root_depth']
-        self.poros_root = spara['root_poros']
-        self.Fc_root    = spara['root_fc']
-        self.Wp_root    = spara['root_wp']
-        self.Ksat_root  = spara['root_ksat']
-        self.beta_root  = spara['root_beta']
-        self.alpha_root = spara['root_alpha']
-        self.n_root     = spara['root_n']
-        self.wr_root    = spara['root_wr']
-        self.MaxStoRoot = self.D_root * self.poros_root
+        # field capacity/wilting point kept regardless of explicit_rootzone: used by
+        # spafhy.py to derive Rew from deep soil moisture when explicit_rootzone=False
+        self.Fc_root = spara['root_fc']
+        self.Wp_root = spara['root_wp']
+
+        if self.explicit_rootzone:
+            # root zone layer
+            self.D_root     = spara['root_depth']
+            self.poros_root = spara['root_poros']
+            self.Ksat_root  = spara['root_ksat']
+            self.beta_root  = spara['root_beta']
+            self.alpha_root = spara['root_alpha']
+            self.n_root     = spara['root_n']
+            self.wr_root    = spara['root_wr']
+            self.MaxStoRoot = self.D_root * self.poros_root
 
         # initial states
         self.PondSto    = np.minimum(spara['pond_storage'], self.MaxPond)
         self.WatStoTop  = spara.get('top_storage',
                                     self.MaxStoTop * spara['org_sat'])
-        self.WatStoRoot = spara.get('root_storage',
-                                    np.minimum(spara['root_sat'] * self.MaxStoRoot,
-                                               self.MaxStoRoot))
+        if self.explicit_rootzone:
+            self.WatStoRoot = spara.get('root_storage',
+                                        np.minimum(spara['root_sat'] * self.MaxStoRoot,
+                                                   self.MaxStoRoot))
 
         # drainage state arrays
         if self.org_drain:
             self.drain_top = np.where(np.isfinite(self.WatStoTop), 0.0, np.nan)
-        self.drain    = np.where(np.isfinite(self.WatStoRoot), 0.0, np.nan)
-        self.retflow  = np.full_like(self.WatStoRoot, 0.0)
+        self.drain    = np.where(np.isfinite(self.WatStoTop), 0.0, np.nan)
+        self.retflow  = np.full_like(self.WatStoTop, 0.0)
         self._drainage_to_gw = 0.0
 
         # initialise all diagnostic state variables
@@ -182,12 +195,13 @@ class BucketOLFGrid(object):
             Psi                                  (matric potential, MPa)
         """
         # root zone
-        self.Wliq_root = self.poros_root * self.WatStoRoot / self.MaxStoRoot
-        self.Wair_root = np.maximum(0.0, self.MaxStoRoot - self.WatStoRoot)
-        self.Sat_root  = self.Wliq_root / self.poros_root
-        self.Rew = np.maximum(0.0,
-            np.minimum((self.Wliq_root - self.Wp_root)
-                       / (self.Fc_root - self.Wp_root + eps), 1.0))
+        if self.explicit_rootzone:
+            self.Wliq_root = self.poros_root * self.WatStoRoot / self.MaxStoRoot
+            self.Wair_root = np.maximum(0.0, self.MaxStoRoot - self.WatStoRoot)
+            self.Sat_root  = self.Wliq_root / self.poros_root
+            self.Rew = np.maximum(0.0,
+                np.minimum((self.Wliq_root - self.Wp_root)
+                           / (self.Fc_root - self.Wp_root + eps), 1.0))
 
         # organic top layer
         self.Wliq_top = ((self.MaxStoTop / self.D_top)
@@ -197,7 +211,8 @@ class BucketOLFGrid(object):
         self.Wliq_top[self.D_top == 0] = np.nan
         self.Wair_top = np.maximum(0.0, self.MaxStoTopInt - self.WatStoTop)
         self.Ree[self.D_top == 0] = eps
-        self.Psi = self.theta_psi()
+        if self.explicit_rootzone:
+            self.Psi = self.theta_psi()
 
     def theta_psi(self):
         """
@@ -277,7 +292,7 @@ class BucketOLFGrid(object):
                 'water_storage'            [mm]: total soil water storage (top + root)
                 'storage_change'           [mm]: change in total storage over dt
         """
-        gridshape    = np.shape(self.WatStoRoot)
+        gridshape    = np.shape(self.WatStoTop)
         flux_to_mm_d = 1e3 * (86400.0 / dt)
 
         # broadcast scalar inputs to full grids
@@ -296,7 +311,8 @@ class BucketOLFGrid(object):
         # save initial storage states
         PondSto0    = self.PondSto.copy()
         WatStoTop0  = self.WatStoTop.copy()
-        WatStoRoot0 = self.WatStoRoot.copy()
+        if self.explicit_rootzone:
+            WatStoRoot0 = self.WatStoRoot.copy()
 
         # initialise per-cell output accumulators (NaN outside catchment)
         nan_grid = np.where(self.valid_mask, 0.0, np.nan)
@@ -330,10 +346,6 @@ class BucketOLFGrid(object):
             MaxStoTop    = self.MaxStoTop[r, c]
             MaxStoTopInt = self.MaxStoTopInt[r, c]
             MaxPond      = self.MaxPond[r, c]
-            D_root       = self.D_root[r, c]
-            poros_root   = self.poros_root[r, c]
-            Fc_root      = self.Fc_root[r, c]
-            MaxStoRoot   = self.MaxStoRoot[r, c]
             retflow_cell = retflow[r, c]
             airv_cell    = airv_deep[r, c]
 
@@ -360,33 +372,51 @@ class BucketOLFGrid(object):
             else:
                 rr_to_root = rr_cell - interc
 
-            # root zone: transpiration
-            tr_cell = min(tr[r, c], self.WatStoRoot[r, c] - eps)
-            self.WatStoRoot[r, c] -= tr_cell
+            if self.explicit_rootzone:
+                D_root     = self.D_root[r, c]
+                poros_root = self.poros_root[r, c]
+                Fc_root    = self.Fc_root[r, c]
+                MaxStoRoot = self.MaxStoRoot[r, c]
 
-            # root zone: Campbell gravitational drainage
-            Wliq_root  = poros_root * self.WatStoRoot[r, c] / MaxStoRoot
-            Sat_root   = Wliq_root / poros_root
-            k_root     = (self.Ksat_root[r, c]
-                          * Sat_root**(2.0 * self.beta_root[r, c] + 3.0))
-            drain_cell = min(k_root * dt,
-                             max(0.0, (Wliq_root - Fc_root)) * D_root)
+                # root zone: transpiration
+                tr_cell = min(tr[r, c], self.WatStoRoot[r, c] - eps)
+                self.WatStoRoot[r, c] -= tr_cell
 
-            # suppress drainage where return flow is active (avoids oscillation)
-            if retflow_cell > 0.0:
-                drain_cell = 0.0
-            drain_cell = min(drain_cell, airv_cell)
+                # root zone: Campbell gravitational drainage
+                Wliq_root  = poros_root * self.WatStoRoot[r, c] / MaxStoRoot
+                Sat_root   = Wliq_root / poros_root
+                k_root     = (self.Ksat_root[r, c]
+                              * Sat_root**(2.0 * self.beta_root[r, c] + 3.0))
+                drain_cell = min(k_root * dt,
+                                 max(0.0, (Wliq_root - Fc_root)) * D_root)
 
-            # root zone: inflow and storage update
-            Qin    = retflow_cell + rr_to_root
-            inflow = min(Qin, MaxStoRoot - self.WatStoRoot[r, c] + drain_cell)
-            self.WatStoRoot[r, c] = min(MaxStoRoot,
-                max(self.WatStoRoot[r, c] + inflow - drain_cell, eps))
+                # suppress drainage where return flow is active (avoids oscillation)
+                if retflow_cell > 0.0:
+                    drain_cell = 0.0
+                drain_cell = min(drain_cell, airv_cell)
 
-            # excess water cascade: try top layer first, then pond.
+                # root zone: inflow and storage update
+                Qin    = retflow_cell + rr_to_root
+                inflow = min(Qin, MaxStoRoot - self.WatStoRoot[r, c] + drain_cell)
+                self.WatStoRoot[r, c] = min(MaxStoRoot,
+                    max(self.WatStoRoot[r, c] + inflow - drain_cell, eps))
+
+                # excess water cascade: try top layer first, then pond.
+                exfil = max(0.0, Qin - inflow)
+            else:
+                # no root zone: transpiration is applied directly in SoilGrid_2Dflow, not here
+                tr_cell = 0.0
+
+                # water below top layer recharges deep soil directly, capped by
+                # its available air volume (airv_cell) instead of MaxStoRoot
+                Qin        = retflow_cell + rr_to_root
+                inflow     = min(Qin, airv_cell)
+                drain_cell = inflow  # recharge handed to SoilGrid_2Dflow as RR
+
+                exfil = max(0.0, Qin - inflow)
+
             # No MaxPond cap here — excess above MaxPond stays in PondSto
             # so the OLF step below can route it downslope.
-            exfil  = max(0.0, Qin - inflow)
             to_top = max(0.0, min(exfil, MaxStoTop - self.WatStoTop[r, c] - eps))
             self.WatStoTop[r, c] += to_top
             self.PondSto[r, c]   += max(0.0, exfil - to_top)
@@ -429,9 +459,13 @@ class BucketOLFGrid(object):
 
         lateral_netflow = lateral_in - lateral_out
 
-        dStorage = ((self.WatStoRoot - WatStoRoot0)
-                    + (self.WatStoTop  - WatStoTop0)
-                    + (self.PondSto    - PondSto0))
+        if self.explicit_rootzone:
+            dStorage = ((self.WatStoRoot - WatStoRoot0)
+                        + (self.WatStoTop  - WatStoTop0)
+                        + (self.PondSto    - PondSto0))
+        else:
+            dStorage = ((self.WatStoTop - WatStoTop0)
+                        + (self.PondSto  - PondSto0))
 
         # per-cell mass balance error [m]; lateral terms cancel when summed
         mbe = (dStorage
@@ -448,15 +482,18 @@ class BucketOLFGrid(object):
             'return_flow':            retflow           * flux_to_mm_d,  # [mm d-1]
             'water_closure':          mbe               * flux_to_mm_d,  # [mm d-1]
             'moisture_top':           self.Wliq_top,                     # [m3 m-3]
-            'moisture_root':          self.Wliq_root,                    # [m3 m-3]
-            'psi_root':               self.Psi,                          # [MPa]
-            'transpiration_limitation': self.Rew,                        # [-]
-            'water_storage_root':     self.WatStoRoot   * 1e3,           # [mm]
             'water_storage_top':      self.WatStoTop    * 1e3,           # [mm]
             'pond_storage':           self.PondSto      * 1e3,           # [mm]
-            'water_storage':          (self.WatStoTop
-                                       + self.WatStoRoot) * 1e3,         # [mm]
             'storage_change':         dStorage          * 1e3,           # [mm]
         }
+
+        if self.explicit_rootzone:
+            results['moisture_root'] = self.Wliq_root                       # [m3 m-3]
+            results['psi_root'] = self.Psi                                  # [MPa]
+            results['transpiration_limitation'] = self.Rew                  # [-]
+            results['water_storage_root'] = self.WatStoRoot * 1e3           # [mm]
+            results['water_storage'] = (self.WatStoTop + self.WatStoRoot) * 1e3  # [mm]
+        else:
+            results['water_storage'] = self.WatStoTop * 1e3                 # [mm]
 
         return results
