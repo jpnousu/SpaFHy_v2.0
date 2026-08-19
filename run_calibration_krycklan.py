@@ -12,13 +12,16 @@ load_dotenv()
 
 
 def resolve_model_root():
+    """Fall back to a repo-relative SpaFHy_RUNS path when PROJECT_FOLDER isn't set."""
+    project_folder = os.getenv('PROJECT_FOLDER')
+    if project_folder:
+        return Path(project_folder) / 'krycklan'
     return Path(__file__).resolve().parents[1] / 'SpaFHy_RUNS' / 'krycklan'
 
 if __name__ == '__main__':
     folder = str(resolve_model_root())
-    runs_root = Path(__file__).resolve().parents[1] / 'SpaFHy_RUNS'
     catchment_no = 2 # C2 catchment
-    runoff_folder = str(runs_root / 'krycklan' / 'obs' / 'DISCHARGE')  # runoff data folder
+    runoff_folder = os.path.join(folder, 'obs', 'DISCHARGE')  # runoff data folder
 
     # evaluate or plot?
     evaluate = True
@@ -64,7 +67,16 @@ if __name__ == '__main__':
 
         # Write soil parameters and run the model
         print(f"\nRunning simulation {i}/{len(combinations)}")
-        create_soil_params(kmax_values, f_values, const_surf_values, max_depth_values, write=True, verbose=False)
+        #create_soil_params(kmax_values, f_values, const_surf_values, max_depth_values, write=True, verbose=False)
+        create_soil_params(
+            kmax_values=kmax_values,
+            kmin_values=kmin_values,
+            f_values=f_values,
+            const_surf_values=const_surf_values,
+            max_depth_values=max_depth_values,
+            write=True,
+            verbose=False,
+        )
         outputfile = parallel_driver(catchment='krycklan', catchment_no=catchment_no, create_ncf=True, create_spinup=False, output=True, folder=folder)
 
         # Read simulated discharge and combine with observations
