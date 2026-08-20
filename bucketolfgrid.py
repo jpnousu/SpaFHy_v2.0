@@ -95,8 +95,9 @@ class BucketOLFGrid(object):
                 simulated; water passing below it is handed directly to
                 SoilGrid_2Dflow as recharge, and transpiration is expected to be
                 applied there instead of here (see spafhy.py). 'root_fc'/'root_wp'
-                are still required in this mode (used to derive Rew from deep soil
-                moisture); other root_* keys are unused.
+                are still required (kept for compatibility) but unused in this mode;
+                Rew is instead computed by SoilGrid_2Dflow itself. Other root_* keys
+                are unused.
         """
 
         # --- overland flow / D8 routing setup ---
@@ -144,8 +145,9 @@ class BucketOLFGrid(object):
 
         self.MaxStoTopInt = self.Fc_top * self.D_top   # interception capacity
 
-        # field capacity/wilting point kept regardless of explicit_rootzone: used by
-        # spafhy.py to derive Rew from deep soil moisture when explicit_rootzone=False
+        # field capacity/wilting point kept regardless of explicit_rootzone: some
+        # spinup/state files and calibration tooling still expect these keys on
+        # BucketOLFGrid; unused for Rew when explicit_rootzone=False (see SoilGrid_2Dflow.Rew)
         self.Fc_root = spara['root_fc']
         self.Wp_root = spara['root_wp']
 

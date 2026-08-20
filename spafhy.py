@@ -154,14 +154,9 @@ class SpaFHy():
             #    RR=RR)
 
             # Rew (root-zone stomatal control): from BucketGrid's root zone, or,
-            # when explicit_rootzone=False, from SoilGrid_2Dflow's gwl-based
-            # near-surface moisture diagnostic using the same Fc/Wp thresholds
-            if self.explicit_rootzone:
-                Rew = self.bu.Rew
-            else:
-                Rew = np.clip(
-                    (self.ds.deepmoist - self.bu.Wp_root) / (self.bu.Fc_root - self.bu.Wp_root + eps),
-                    0.0, 1.0)
+            # when explicit_rootzone=False, from SoilGrid_2Dflow's own Koivusalo
+            # et al. (2008) Rew (consistent with SpaFHy_Peat/soilprofile.py)
+            Rew = self.bu.Rew if self.explicit_rootzone else self.ds.Rew
 
             # run CanopyGrid
             canopy_results = self.cpy.run_timestep(

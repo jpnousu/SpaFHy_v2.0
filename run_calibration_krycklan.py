@@ -34,13 +34,16 @@ if __name__ == '__main__':
 
     # f values for calibration
     f_range = np.array([12., 16., 20., 24.]) # up to crazy range
-    #f_range = np.array([14.]) # small test
+    f_range = np.array([20.]) # small test
 
     # kmax values for calibration
     kmax_range = np.array([1e-4, 1e-3, 1e-2]) # up to crazy range
-    #kmax_range = np.array([0.1, 0.01]) # small test
-    kmax_depth = np.array([0.3, 0.6])
-    max_depth = np.array([2.])
+    kmax_range = np.array([1e-2]) # small test
+
+    kmax_depth = np.array([0.0, 0.3, 0.6])
+    kmax_depth = np.array([0.6]) # small test
+
+    max_depth = np.array([10.])
 
     # kmin values for calibration
     kmin_range = np.array([1e-9])

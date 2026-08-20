@@ -188,6 +188,17 @@ class SoilGrid_2Dflow(object):
             
         self.deepmoist[np.isnan(self.gwl)] = np.nan
 
+        # reference groundwater levels for the Koivusalo et al. (2008) Rew formulation,
+        # used by spafhy.py only when BucketGrid/BucketOLFGrid has no explicit root zone
+        # (mirrors SpaFHy_Peat/soilprofile.py)
+        self.rew_gwl_fc0 = spara.get('rew_gwl_fc0', -0.8)
+        self.rew_gwl_fc1 = spara.get('rew_gwl_fc1', -1.3)
+        self.rew_gwl_wp  = spara.get('rew_gwl_wp', -150.1)
+        self.root_fc0 = self._eval_rootmoist_at_gwl(self.rew_gwl_fc0)
+        self.root_fc1 = self._eval_rootmoist_at_gwl(self.rew_gwl_fc1)
+        self.root_wp  = self._eval_rootmoist_at_gwl(self.rew_gwl_wp)
+        self.Rew = np.full_like(self.gwl, 1.0)
+
         # air volume and returnflow
         self.airv_deep = np.maximum(0.0, self.Wsto_deep_max - self.Wsto_deep)
         self.qr = np.full_like(self.gwl, 0.0)
@@ -225,6 +236,24 @@ class SoilGrid_2Dflow(object):
         self.spinup_steps = spara.get('spinup_steps', 0)
         self.conv99 = 99
         #self.totit = 0
+
+    def _eval_rootmoist_at_gwl(self, gwl_value):
+        """
+        Evaluates gwl_to_rootmoist at a fixed reference groundwater level [m],
+        soiltype-wise or cell-wise depending on self.z_from_gis. Used to derive
+        root_fc0/root_fc1/root_wp reference moistures for the Koivusalo et al.
+        (2008) Rew formulation.
+        """
+        out = np.full_like(self.gwl, np.nan)
+        if not self.z_from_gis:
+            for key, value in self.gwl_to_rootmoist.items():
+                out[self.soiltype == key] = value(gwl_value)
+        else:
+            for i in range(self.gwl_to_rootmoist.shape[0]):
+                for j in range(self.gwl_to_rootmoist.shape[1]):
+                    if np.isfinite(self.cmask[i, j]):
+                        out[i, j] = self.gwl_to_rootmoist[i, j](gwl_value)
+        return out
 
     def rolling_window(self, a, window):
         """
@@ -275,6 +304,7 @@ class SoilGrid_2Dflow(object):
                 'water_storage'       [mm]:     deep soil water storage
                 'return_flow'         [mm]:     return flow to BucketGrid (when gwl > 0)
                 'transpiration'       [mm]:     transpiration actually extracted (after capping)
+                'transpiration_limitation' [-]: relative extractable water (REW), Koivusalo et al. (2008)
                 'transmissivity'      [m2 d-1]: mean transmissivity of the grid
         """
 
@@ -732,6 +762,12 @@ class SoilGrid_2Dflow(object):
                         self.Wsto_deep[i,j] = self.gwl_to_wsto[i,j](self.H[i,j] - self.ele[i,j])  
                         self.deepmoist[i,j] = self.gwl_to_rootmoist[i,j](self.gwl[i,j])
 
+        # Koivusalo et al. 2008 HESS without wet side limit (SpaFHy_Peat/soilprofile.py)
+        self.Rew = np.where(self.deepmoist > self.root_fc1,
+                            np.minimum(1.0, 0.5*(1 + (self.deepmoist - self.root_fc1)/(self.root_fc0 - self.root_fc1))),
+                            np.maximum(0.0, 0.5*(self.deepmoist - self.root_wp)/(self.root_fc1 - self.root_wp))
+                            )
+
         # The difference is the return flow to bucketgrid
         self.qr = Wsto_before_qr - self.Wsto_deep
 
@@ -768,6 +804,7 @@ class SoilGrid_2Dflow(object):
                     'return_flow': self.qr * 1e3,  # [mm]
                     'transpiration': self.tr_deep * self.cmask * 1e3,  # [mm]
                     'moisture_deep': self.deepmoist * self.cmask,  # [m3 m-3]
+                    'transpiration_limitation': self.Rew * self.cmask,  # [-]
                     'transmissivity': np.nanmean([TrW, TrE, TrN, TrS], axis=0),  # [m2 d-1]
                     'transmissivity_W': TrW,  # [m2 d-1]
                     'transmissivity_E': TrE,  # [m2 d-1]
@@ -800,6 +837,7 @@ class SoilGrid_2Dflow(object):
                     'return_flow': self.qr * 1e3,  # [mm]
                     'transpiration': self.tr_deep * self.cmask * 1e3,  # [mm]
                     'moisture_deep': self.deepmoist * self.cmask,  # [m3 m-3]
+                    'transpiration_limitation': self.Rew * self.cmask,  # [-]
                     'transmissivity': np.nanmean([TrW, TrE, TrN, TrS], axis=0),  # [m2 d-1]
                     'transmissivity_W': TrW,  # [m2 d-1]
                     'transmissivity_E': TrE,  # [m2 d-1]

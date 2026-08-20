@@ -10,7 +10,7 @@ from datetime import datetime
 
 reso = 20
 streams = 'channels'
-streams = '5haStreams'
+#streams = '5haStreams'
 
 
 def _constant_properties(properties):
@@ -58,7 +58,7 @@ def parameters(folder='', soil_params=None):
             'spatial_deep': True,
             'org_drain': True, # organic layer drainage True/False
             'overland_flow': True, # use BucketOLFGrid (overland flow routing) True/False
-            'explicit_rootzone': True, # if False, BucketGrid/BucketOLFGrid simulate only the organic
+            'explicit_rootzone': False, # if False, BucketGrid/BucketOLFGrid simulate only the organic
                                         # layer; transpiration and infiltration are handled by
                                         # SoilGrid_2Dflow instead. Requires simtype == '2D'.
             'ditch_boundary': 'Cauchy',  # ditch boundary condition: 'Cauchy' (flux) or 'Dirichlet' (constant head)
