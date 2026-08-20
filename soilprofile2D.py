@@ -208,6 +208,9 @@ class SoilGrid_2Dflow(object):
         # 0.5 seems to work better when gwl is close to impermeable bottom
         # (probably because transmissivity does not switch between 0. and > 0 as much)
         self.implic = 0.5  # solving method: 0-forward Euler, 1-backward Euler, 0.5-Crank-Nicolson
+        # interface transmissivity averaging: 'harmonic' (default, more restrictive,
+        # dominated by lower-conductivity neighbour) or 'geometric' (earlier model version)
+        self.transmissivity_mean = spara.get('transmissivity_mean', 'harmonic')
 
         # create arrays needed in computation only once
         # previous time step neighboring hydraylic head H (West, East, North, South)
@@ -235,6 +238,12 @@ class SoilGrid_2Dflow(object):
         self.tmstep = 0
         self.spinup_steps = spara.get('spinup_steps', 0)
         self.conv99 = 99
+        # adaptive sub-stepping: if a sub-step fails to converge, retry it as two
+        # half-length sub-steps, up to this many halvings (dt / 2**n minimum)
+        self.max_substep_halvings = spara.get('max_substep_halvings', 6)
+        # bail out of the Picard loop early (before maxiter) and let _adaptive_solve
+        # halve dt instead of grinding through the full iteration budget
+        self.early_exit_iter = spara.get('early_exit_iter', 10)
         #self.totit = 0
 
     def _eval_rootmoist_at_gwl(self, gwl_value):
@@ -272,20 +281,43 @@ class SoilGrid_2Dflow(object):
         strides = a.strides + (a.strides[-1],)
         return np.lib.stride_tricks.as_strided(a, shape=shape, strides=strides)
 
-    def run_timestep(self, dt=1.0, RR=0.0, TR=0.0):
-
+    def _interface_transmissivity(self, Tr):
         """
-        Advances the 2D groundwater flow model by one timestep.
+        Computes transmissivity at cell interfaces (E-W and N-S) from the two
+        neighbouring cells' transmissivities, using either the harmonic mean
+        (self.transmissivity_mean == 'harmonic', default; more restrictive,
+        dominated by the lower-conductivity neighbour) or the geometric mean
+        (self.transmissivity_mean == 'geometric'; the earlier model version's
+        behaviour, allows relatively more flow).
+        """
+        if self.transmissivity_mean == 'geometric':
+            TrTmpEW = gmean(self.rolling_window(Tr, 2), -1)
+            TrTmpNS = np.transpose(gmean(self.rolling_window(np.transpose(Tr), 2), -1))
+        else:
+            w = self.rolling_window(Tr, 2)
+            d = np.where(w[...,0]+w[...,1] > 0, w[...,0]+w[...,1], 1.0)  # safe denominator
+            TrTmpEW = np.where(w[...,0]+w[...,1] > 0, 2*w[...,0]*w[...,1] / d, 0.0)
+            w = self.rolling_window(np.transpose(Tr), 2)
+            d = np.where(w[...,0]+w[...,1] > 0, w[...,0]+w[...,1], 1.0)  # safe denominator
+            TrTmpNS = np.transpose(np.where(w[...,0]+w[...,1] > 0, 2*w[...,0]*w[...,1] / d, 0.0))
+        return TrTmpEW, TrTmpNS
 
-        Solves the implicit/Crank-Nicolson finite-difference system iteratively
-        until convergence (max head change < x m) or maxiter=y is reached.
-        Transmissivity is updated inside the iteration loop. Stream/lake cells
-        are treated as constant-head boundaries when the neighbouring water table
-        is above the ditch/lake water level.
+    def run_timestep(self, dt=1.0, RR=0.0, TR=0.0):
+        """
+        Advances the 2D groundwater flow model by one timestep by marching
+        through it in adaptive chunks: if the nonlinear (Picard) iteration in
+        _solve_step fails to converge within early_exit_iter iterations (bailing
+        out well before the full maxiter budget), the chunk is retried as two
+        half-length sub-steps (recursively, up to max_substep_halvings), which
+        keeps the Boussinesq solve stable when local transmissivity is very high
+        (e.g. shallow water table over high-Ksat near-surface soil) without
+        having to shorten the model's daily timestep everywhere.
 
-        Note:
-            dt is in days. Transmissivity lookup tables are pre-converted to
-            [m2 d-1] in gwl_Wsto / gwl_Wsto_vectorized.
+        The chunk size is remembered across calls: each new chunk starts at
+        twice the size of the last chunk that worked (capped at dt), so once a
+        stable smaller step size is found it is reused (and cautiously grown)
+        on subsequent timesteps instead of always retrying the full dt from
+        scratch.
 
         Args:
             dt  (float): Timestep duration [days]. Default 1.0 (daily).
@@ -296,16 +328,141 @@ class SoilGrid_2Dflow(object):
                 storage cannot be drawn below zero.
 
         Returns:
-            dict with keys:
-                'ground_water_level'  [m]:      updated groundwater level below surface
-                'lateral_netflow'     [mm d-1]: net lateral flow (positive = outflow)
-                'netflow_to_ditch'    [mm d-1]: net flow into streams/ditches
-                'water_closure'       [mm d-1]: mass balance error (should be ~0)
-                'water_storage'       [mm]:     deep soil water storage
-                'return_flow'         [mm]:     return flow to BucketGrid (when gwl > 0)
-                'transpiration'       [mm]:     transpiration actually extracted (after capping)
-                'transpiration_limitation' [-]: relative extractable water (REW), Koivusalo et al. (2008)
-                'transmissivity'      [m2 d-1]: mean transmissivity of the grid
+            dict with keys (see _solve_step for full list): rate-type keys
+            (lateral_netflow, netflow_to_ditch, netflow_to_lake, water_closure)
+            are time-weighted averages over the chunks/sub-steps; depth-type
+            keys (return_flow, transpiration) are summed; all other keys
+            reflect the state at the end of the full timestep.
+        """
+        self.tmstep += 1
+
+        # convergence criteria: looser during spin-up, tighter afterwards
+        crit = 1e-2 if self.tmstep <= self.spinup_steps else 1e-3
+        # implicit solution for spinup, crank-nicholson afterwards
+        self.implic = 1.0 if self.tmstep <= self.spinup_steps else 0.5
+
+        # start at the chunk size that worked last timestep (doubled), capped at dt,
+        # instead of always retrying (and re-failing) the full dt from scratch
+        chunk_dt = min(dt, getattr(self, '_trial_dt', dt))
+
+        combined = None
+        t_elapsed = 0.0
+        overall_min_dt = dt  # smallest sub-step used anywhere this timestep, for logging only
+        n_chunks = 0
+        while dt - t_elapsed > 1e-9:
+            this_chunk = min(chunk_dt, dt - t_elapsed)
+            chunk_RR = RR * (this_chunk / dt)
+            chunk_TR = TR * (this_chunk / dt)
+
+            self._min_substep_dt = this_chunk  # set by _adaptive_solve to the size that actually worked
+            chunk_result = self._adaptive_solve(this_chunk, chunk_RR, chunk_TR, crit)
+            n_chunks += 1
+
+            overall_min_dt = min(overall_min_dt, self._min_substep_dt)
+            w_prev = t_elapsed / (t_elapsed + this_chunk)
+            w_new = this_chunk / (t_elapsed + this_chunk)
+            combined = chunk_result if combined is None else self._merge_weighted(combined, chunk_result, w_prev, w_new)
+            t_elapsed += this_chunk
+
+            # grow after an easy chunk, shrink to whatever size actually worked after a hard one
+            chunk_dt = min(dt, 2.0 * self._min_substep_dt)
+
+        self._trial_dt = chunk_dt  # seeds the first chunk of the next timestep
+        if overall_min_dt < dt:
+            print(f'  Timestep {self.tmstep}: dt={dt:.5f} d required sub-stepping down to '
+                  f'{overall_min_dt:.5f} d ({n_chunks} chunk(s))')
+        return combined
+
+    # rate-type outputs [mm d-1]: time-weighted average across sub-steps
+    _RATE_RESULT_KEYS = ('lateral_netflow', 'netflow_to_ditch', 'netflow_to_lake', 'water_closure')
+    # depth-type outputs [mm]: accumulated depth over the (sub-)period, summed across sub-steps
+    _DEPTH_RESULT_KEYS = ('return_flow', 'transpiration')
+
+    def _snapshot_state(self):
+        """Saves the primary prognostic state (H, gwl, Wsto_deep) before a solve attempt."""
+        return (self.H.copy(), self.gwl.copy(), self.Wsto_deep.copy())
+
+    def _restore_state(self, snapshot):
+        """Restores primary prognostic state saved by _snapshot_state (discards a failed attempt)."""
+        self.H, self.gwl, self.Wsto_deep = (a.copy() for a in snapshot)
+
+    def _merge_weighted(self, earlier, later, w_earlier, w_later):
+        """
+        Combines results from two chronologically sequential (sub-)periods.
+        Rate-type keys are weighted-averaged (w_earlier + w_later should sum to
+        1); depth-type keys are summed; everything else (state) is taken from
+        the later period.
+        """
+        combined = dict(later)
+        for key in self._RATE_RESULT_KEYS:
+            if key in earlier:
+                combined[key] = earlier[key] * w_earlier + later[key] * w_later
+        for key in self._DEPTH_RESULT_KEYS:
+            if key in earlier:
+                combined[key] = earlier[key] + later[key]
+        return combined
+
+    def _adaptive_solve(self, dt_sub, RR_sub, TR_sub, crit, depth=0):
+        """
+        Solves one sub-interval of length dt_sub; on non-convergence, rolls back
+        state and retries as two half-length sub-steps (recursively).
+        """
+        snapshot = self._snapshot_state()
+        converged, results = self._solve_step(dt_sub, RR_sub, TR_sub, crit)
+
+        if converged or depth >= self.max_substep_halvings:
+            if not converged:
+                print(f'  WARNING: sub-step dt={dt_sub:.5f} d (depth {depth}) did not converge '
+                      f'after {self.max_substep_halvings} halvings; accepting last iterate')
+                n_cells, deep_id_counts = self._last_non_conv_summary
+                print(f'  Non-converged cells: {n_cells}')
+                if deep_id_counts is not None:
+                    ids, counts = deep_id_counts
+                    for did, cnt in zip(ids, counts):
+                        print(f'    deep_id={int(did)}: {cnt} cells')
+            self._min_substep_dt = min(self._min_substep_dt, dt_sub)
+            return results
+
+        # retry the same interval as two half-length sub-steps, in chronological order
+        self._restore_state(snapshot)
+        half_dt, half_RR, half_TR = dt_sub / 2.0, RR_sub / 2.0, TR_sub / 2.0
+        first = self._adaptive_solve(half_dt, half_RR, half_TR, crit, depth + 1)
+        second = self._adaptive_solve(half_dt, half_RR, half_TR, crit, depth + 1)
+        return self._merge_weighted(first, second, 0.5, 0.5)
+
+    def _solve_step(self, dt, RR, TR, crit):
+        """
+        Attempts to advance the 2D groundwater flow model by dt (single Picard/
+        Crank-Nicolson attempt, no sub-stepping). Transmissivity is updated
+        inside the iteration loop. Stream/lake cells are treated as
+        constant-head boundaries when the neighbouring water table is above
+        the ditch/lake water level.
+
+        Note:
+            dt is in days. Transmissivity lookup tables are pre-converted to
+            [m2 d-1] in gwl_Wsto / gwl_Wsto_vectorized.
+
+        Args:
+            dt   (float): Timestep (or sub-step) duration [days].
+            RR   (array): Drainage input from BucketGrid to the saturated zone [m].
+            TR   (array): Transpiration sink taken directly from the soil water
+                storage [m]. Capped so storage cannot be drawn below zero.
+            crit (float): Convergence criterion [m] for the Picard iteration.
+
+        Returns:
+            (converged, results):
+                converged (bool): whether conv1 < crit was reached before maxiter
+                    or early_exit_iter, whichever comes first.
+                results (dict) with keys:
+                    'ground_water_level'  [m]:      updated groundwater level below surface
+                    'lateral_netflow'     [mm d-1]: net lateral flow (positive = outflow)
+                    'netflow_to_ditch'    [mm d-1]: net flow into streams/ditches
+                    'water_closure'       [mm d-1]: mass balance error (should be ~0)
+                    'water_storage'       [mm]:     deep soil water storage
+                    'return_flow'         [mm]:     return flow to BucketGrid (when gwl > 0)
+                    'transpiration'       [mm]:     transpiration actually extracted (after capping)
+                    'transpiration_limitation' [-]: relative extractable water (REW), Koivusalo et al. (2008)
+                    'transmissivity'      [m2 d-1]: mean transmissivity of the grid
         """
 
         
@@ -316,8 +473,6 @@ class SoilGrid_2Dflow(object):
         #East element: n=i*cols+1
         #North element: n=i*cols+j-cols
         #South element: n=i*cols-j+cols
-    
-        self.tmstep += 1
 
         # transpiration cannot draw storage below zero (Rew already limits demand upstream in CanopyGrid)
         TR = np.minimum(TR, np.maximum(self.Wsto_deep, 0.0))
@@ -426,13 +581,8 @@ class SoilGrid_2Dflow(object):
                         if nbr:
                             self.Tr0[i,j] = np.mean(nbr)
 
-        # transmissivity at cell interfaces: harmonic mean of the two neighbouring cells
-        w = self.rolling_window(self.Tr0, 2)
-        d = np.where(w[...,0]+w[...,1] > 0, w[...,0]+w[...,1], 1.0)  # safe denominator
-        TrTmpEW = np.where(w[...,0]+w[...,1] > 0, 2*w[...,0]*w[...,1] / d, 0.0)           # harmonic mean
-        w = self.rolling_window(np.transpose(self.Tr0), 2)
-        d = np.where(w[...,0]+w[...,1] > 0, w[...,0]+w[...,1], 1.0)  # safe denominator
-        TrTmpNS = np.transpose(np.where(w[...,0]+w[...,1] > 0, 2*w[...,0]*w[...,1] / d, 0.0))  # harmonic mean
+        # transmissivity at cell interfaces (harmonic or geometric mean, see self.transmissivity_mean)
+        TrTmpEW, TrTmpNS = self._interface_transmissivity(self.Tr0)
         self.TrW0[:,1:] = TrTmpEW
         self.TrE0[:,:-1] = TrTmpEW
         self.TrN0[1:,:] = TrTmpNS
@@ -462,10 +612,8 @@ class SoilGrid_2Dflow(object):
         Htmp = self.H.copy()
         Htmp1 = self.H.copy()
 
-        # convergence criteria: looser during spin-up, tighter afterwards
-        crit = 1e-2 if self.tmstep <= self.spinup_steps else 1e-3
-        # implicit solution for spinup, crank-nicholson afterwards
-        self.implic = 1.0 if self.tmstep <= self.spinup_steps else 0.5
+        # crit and self.implic are set once per external timestep in run_timestep()
+        # (constant across any internal sub-steps of the same timestep)
 
         # Precompute transmissivity at ditch water level (constant throughout iteration)
         # T(ditch_h) is the transmissivity of the saturated zone below the ditch level.
@@ -485,6 +633,7 @@ class SoilGrid_2Dflow(object):
 
         maxiter = 100
         update_Tr_in_loop = True
+        converged = False
 
         for it in range(maxiter):
             if update_Tr_in_loop:
@@ -520,12 +669,7 @@ class SoilGrid_2Dflow(object):
                                 if nbr:
                                     self.Tr1[i,j] = np.mean(nbr)
                 
-                w = self.rolling_window(self.Tr1, 2)
-                d = np.where(w[...,0]+w[...,1] > 0, w[...,0]+w[...,1], 1.0)  # safe denominator
-                TrTmpEW = np.where(w[...,0]+w[...,1] > 0, 2*w[...,0]*w[...,1] / d, 0.0)           # harmonic mean
-                w = self.rolling_window(np.transpose(self.Tr1), 2)
-                d = np.where(w[...,0]+w[...,1] > 0, w[...,0]+w[...,1], 1.0)  # safe denominator
-                TrTmpNS = np.transpose(np.where(w[...,0]+w[...,1] > 0, 2*w[...,0]*w[...,1] / d, 0.0))  # harmonic mean
+                TrTmpEW, TrTmpNS = self._interface_transmissivity(self.Tr1)
                 self.TrW1[:,1:] = TrTmpEW
                 self.TrE1[:,:-1] = TrTmpEW
                 self.TrN1[1:,:] = TrTmpNS
@@ -643,17 +787,16 @@ class SoilGrid_2Dflow(object):
             if self.tmstep > self.spinup_steps:
                 Htmp1 = np.where(np.abs(Htmp1-Htmp)> 0.5, Htmp + 0.5*np.sign(Htmp1-Htmp), Htmp1)
 
-            conv1 = np.max(np.abs(Htmp1 - Htmp))
-                      
+            # per-cell head change this iteration (saved for the post-loop non-convergence
+            # diagnostic, since Htmp is overwritten with Htmp1 right below)
+            head_diff = np.abs(Htmp1 - Htmp)
+            conv1 = np.max(head_diff)
+
             max_index = np.unravel_index(np.argmax(np.abs(Htmp1 - Htmp)),(self.rows,self.cols))
 
-            # especially near profile bottom, solution oscillates so added these steps to avoid that
-            if it > 40:
-                Htmp = 0.25*Htmp1+0.75*Htmp
-            elif it > 20:
-                Htmp = 0.5*Htmp1+0.5*Htmp
-            else:
-                Htmp = Htmp1.copy()
+            # no iteration-count-based relaxation needed: adaptive sub-stepping now
+            # handles the oscillation/stiffness this used to be a workaround for
+            Htmp = Htmp1.copy()
 
             Htmp = np.reshape(Htmp,(self.rows,self.cols))
 
@@ -664,9 +807,12 @@ class SoilGrid_2Dflow(object):
                       ' H[max_index]', Htmp[max_index]-self.ele[max_index])
 
             if conv1 < crit:
+                converged = True
                 break
+            if it + 1 >= self.early_exit_iter:
+                break  # bail out early (converged stays False); _adaptive_solve halves dt and retries
             # end of iteration loop
-        if it == 99:
+        if not converged:
             self.conv99 += 1
         Htmp = np.reshape(Htmp,(self.rows,self.cols))
 
@@ -688,14 +834,14 @@ class SoilGrid_2Dflow(object):
         #      f', ditch_h: {self.ditch_h[i,j]:.3f}'
         #      f', Tr: {self.Tr1[i,j]:.4f} m2/d'
         #      f', deep_id: {deep_id_val}')
-        if it == 99:
-            non_conv = np.abs(np.reshape(Htmp1, (self.rows, self.cols)) - Htmp) > crit
+        if not converged:
+            # uses head_diff from the breaking iteration (Htmp already equals Htmp1 by this point)
+            # stored (not printed here) since this attempt may still be resolved by halving;
+            # _adaptive_solve prints it only if this non-converged result ends up being accepted
+            non_conv = np.reshape(head_diff, (self.rows, self.cols)) > crit
             non_conv &= np.isfinite(self.ele)
-            print(f'  Non-converged cells: {np.sum(non_conv)}')
-            if hasattr(self, 'deep_id'):
-                ids, counts = np.unique(self.deep_id[non_conv], return_counts=True)
-                for did, cnt in zip(ids, counts):
-                    print(f'    deep_id={int(did)}: {cnt} cells')
+            self._last_non_conv_summary = (int(np.sum(non_conv)),
+                np.unique(self.deep_id[non_conv], return_counts=True) if hasattr(self, 'deep_id') else None)
         
         # lateral flow [m d-1] is calculated in two parts: one depending on previous time step
         # and other on current time step (lateral flowsee 2/2). Their weighting depends
@@ -832,6 +978,8 @@ class SoilGrid_2Dflow(object):
                     'ground_water_level': h_out,  # [m]
                     'lateral_netflow': -lateral_flow * 1e3 / dt,  # [mm d-1]
                     'netflow_to_ditch': netflow_to_ditch * 1e3 / dt,  # [mm d-1]
+                    # Dirichlet merges lakes into ditch_h (see __init__), so lake flow is
+                    'netflow_to_lake': np.zeros_like(netflow_to_ditch) * self.cmask,  # [mm d-1]
                     'water_closure': mbe * 1e3 / dt,  # [mm d-1]
                     'water_storage': Wsto_deep_out * 1e3,  # [mm]
                     'return_flow': self.qr * 1e3,  # [mm]
@@ -845,7 +993,7 @@ class SoilGrid_2Dflow(object):
                     'transmissivity_S': TrS,  # [m2 d-1]
                     }
 
-        return results
+        return converged, results
 
 
 def connectivity_scalar(gwl):

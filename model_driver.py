@@ -365,10 +365,12 @@ def preprocess_parameters(pgen, catchment, folder='', psoil=None):
         dsdata = preprocess_dsdata(pspd, spatial_pspd, deepp, gisdata, pgen['spatial_soil'])
         dsdata['ditch_boundary'] = pgen.get('ditch_boundary', 'Dirichlet')
         # reference groundwater levels for SoilGrid_2Dflow's Koivusalo et al. (2008) Rew,
-        # used only when pgen['explicit_rootzone'] = False (defaults match SpaFHy_Peat_HIKET)
+        # used only when pgen['explicit_rootzone'] = False (defaults match SpaFHy_Peat)
         dsdata['rew_gwl_fc0'] = pgen.get('rew_gwl_fc0', -0.8)
         dsdata['rew_gwl_fc1'] = pgen.get('rew_gwl_fc1', -1.3)
         dsdata['rew_gwl_wp'] = pgen.get('rew_gwl_wp', -150.1)
+        # interface transmissivity averaging: 'harmonic' (default) or 'geometric'
+        dsdata['transmissivity_mean'] = pgen.get('transmissivity_mean', 'harmonic')
     else:
         dsdata = pspd.copy() # dummy
         

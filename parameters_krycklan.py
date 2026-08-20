@@ -62,6 +62,7 @@ def parameters(folder='', soil_params=None):
                                         # layer; transpiration and infiltration are handled by
                                         # SoilGrid_2Dflow instead. Requires simtype == '2D'.
             'ditch_boundary': 'Cauchy',  # ditch boundary condition: 'Cauchy' (flux) or 'Dirichlet' (constant head)
+            'transmissivity_mean': 'harmonic', # interface transmissivity averaging: 'harmonic' or 'geometric'
             'topmodel': True,
             # else needs soil_id.dat, stream_depth.dat
             'spatial_forcing': False,  # if False uses forcing from forcing file with pgen['forcing_id'] and cpy['loc']
