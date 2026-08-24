@@ -158,6 +158,18 @@ if __name__ == '__main__':
             formatted = f'{v:.2e}' if abs(v) < 0.01 and v != 0 else f'{v:.4f}'
             print(f'  {param:<20} {formatted}')
 
+        # regenerate soil parameters using the best (total runoff) calibration result
+        best_tot = summary.loc[best_run_tot]
+        create_soil_params(
+            kmax_values={soil_type: float(best_tot[f'kmax_{soil_type}'])},
+            kmin_values={soil_type: float(best_tot[f'kmin_{soil_type}'])},
+            f_values={soil_type: float(best_tot[f'f_{soil_type}'])},
+            const_surf_values={soil_type: float(best_tot[f'kmax_depth_{soil_type}'])},
+            max_depth_values={soil_type: float(best_tot[f'max_depth_{soil_type}'])},
+            write=True,
+            verbose=False,
+        )
+
     if plot:
         fig, (ax, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 11), sharex=True)
         obs_plotted = False

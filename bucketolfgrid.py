@@ -450,6 +450,13 @@ class BucketOLFGrid(object):
                         # no valid downslope neighbour: excess exits as surface runoff
                         roff_out[r, c]     += excess
                         self.PondSto[r, c]  = MaxPond
+                else:
+                    # flow_dir is not a valid D8 code (e.g. flat/sink/nodata cell,
+                    # common in flat peatland terrain): without this fallback the
+                    # excess is never routed and silently accumulates in PondSto
+                    # forever, so route it out as surface runoff instead
+                    roff_out[r, c]     += excess
+                    self.PondSto[r, c]  = MaxPond
 
         # ----------------------------------------------------------------
         # Post-loop: update state and compute grid-wide diagnostics

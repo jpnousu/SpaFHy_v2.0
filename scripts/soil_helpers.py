@@ -53,6 +53,75 @@ def expand_pf_layers(pf_dict, n_layers):
     return expanded
 
 
+def plot_ksat_profiles(exp_params, out_path=None, show=False):
+    """
+    Plot exponential Ksat(z) profiles for each soil type.
+
+    Args:
+        exp_params (dict): soil_type -> {'Kmax', 'Kmin', 'f', 'max_depth', 'const_surf_depth'}
+        out_path (str|Path, optional): if given, save figure to this path.
+        show (bool): if True, display the figure (plt.show()).
+    """
+    fig, ax = plt.subplots(figsize=(6, 6))
+
+    soil_types = sorted(exp_params.keys())
+    colors = plt.cm.tab20(np.linspace(0, 1, len(soil_types)))
+
+    for color, soil_type in zip(colors, soil_types):
+        p = exp_params[soil_type]
+        z = np.linspace(0, p['max_depth'], 500)
+        below_const = np.maximum(z - p['const_surf_depth'], 0.0)
+        K = np.where(
+            z <= p['const_surf_depth'],
+            p['Kmax'],
+            (p['Kmax'] - p['Kmin']) * np.exp(-p['f'] * below_const) + p['Kmin'],
+        )
+
+        ax.plot(
+            K,
+            -z,
+            linewidth=2.5,
+            color=color,
+            label=(
+                f"{soil_type}  ($K_{{max}}$={p['Kmax']:.0e}, "
+                f"$K_{{min}}$={p['Kmin']:.0e}, $f$={p['f']})"
+            ),
+        )
+
+    ax.set_xlabel('Saturated Hydraulic Conductivity $K_{sat}$ [m/s]', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Depth [m]', fontsize=12, fontweight='bold')
+    ax.set_title('Exponential $K(z)$ Profiles by Soil Type', fontsize=13, fontweight='bold')
+    ax.set_xscale('log')
+    ax.grid(True, which='both', alpha=0.3, linestyle='--')
+    ax.legend(
+        loc='lower center',
+        bbox_to_anchor=(0.5, 1.1),
+        ncol=2,
+        fontsize=8,
+        framealpha=0.95,
+        edgecolor='black',
+    )
+    ax.text(
+        0.97, 0.05,
+        r'$K(z) = (K_{\mathrm{max}} - K_{\mathrm{min}})\,e^{-fz} + K_{\mathrm{min}}$',
+        transform=ax.transAxes,
+        fontsize=11,
+        ha='right', va='bottom',
+        bbox=dict(boxstyle='round,pad=0.4', facecolor='white', alpha=0.85, edgecolor='gray'),
+    )
+
+    plt.tight_layout(rect=[0, 0, 1, 0.88])
+
+    if out_path:
+        plt.savefig(out_path, dpi=300, bbox_inches='tight')
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    return fig, ax
+
+
 def fmt_number(v):
     """Format numbers for readable Python literals."""
     if isinstance(v, int):

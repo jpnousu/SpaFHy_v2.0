@@ -239,10 +239,14 @@ class SoilGrid_2Dflow(object):
         self.spinup_steps = spara.get('spinup_steps', 0)
         self.conv99 = 99
         # adaptive sub-stepping: if a sub-step fails to converge, retry it as two
-        # half-length sub-steps, up to this many halvings (dt / 2**n minimum)
+        # half-length sub-steps, up to this many halvings
         self.max_substep_halvings = spara.get('max_substep_halvings', 6)
-        # bail out of the Picard loop early (before maxiter) and let _adaptive_solve
-        # halve dt instead of grinding through the full iteration budget
+        # absolute floor on sub-step size [d]: halving stops here regardless of
+        # max_substep_halvings, so consecutive hard timesteps (each starting from
+        # the previous day's already-shrunk trial size) can't ratchet down forever
+        self.min_substep_dt = spara.get('min_substep_dt', 0.01171875)  # 16.875 min
+        # bail out of the solution loop and let _adaptive_solve
+        # halve dt instead of going until maxiter
         self.early_exit_iter = spara.get('early_exit_iter', 10)
         #self.totit = 0
 
@@ -304,20 +308,18 @@ class SoilGrid_2Dflow(object):
 
     def run_timestep(self, dt=1.0, RR=0.0, TR=0.0):
         """
-        Advances the 2D groundwater flow model by one timestep by marching
-        through it in adaptive chunks: if the nonlinear (Picard) iteration in
+        Advances the 2D groundwater flow model by one timestep by going
+        through it in adaptive sub-steps: if the iteration in
         _solve_step fails to converge within early_exit_iter iterations (bailing
-        out well before the full maxiter budget), the chunk is retried as two
+        out before the full maxiter number), the sub-step is retried as two
         half-length sub-steps (recursively, up to max_substep_halvings), which
-        keeps the Boussinesq solve stable when local transmissivity is very high
-        (e.g. shallow water table over high-Ksat near-surface soil) without
-        having to shorten the model's daily timestep everywhere.
+        keeps the solve stable when transmissivity is very high
+        (e.g. shallow water table over high-Ksat near-surface soil).
 
-        The chunk size is remembered across calls: each new chunk starts at
-        twice the size of the last chunk that worked (capped at dt), so once a
+        The sub-step size is remembered across calls: each new sub-step starts
+        at twice the size of the last one that worked (capped at dt), so once a
         stable smaller step size is found it is reused (and cautiously grown)
-        on subsequent timesteps instead of always retrying the full dt from
-        scratch.
+        on subsequent timesteps.
 
         Args:
             dt  (float): Timestep duration [days]. Default 1.0 (daily).
@@ -330,7 +332,7 @@ class SoilGrid_2Dflow(object):
         Returns:
             dict with keys (see _solve_step for full list): rate-type keys
             (lateral_netflow, netflow_to_ditch, netflow_to_lake, water_closure)
-            are time-weighted averages over the chunks/sub-steps; depth-type
+            are time-weighted averages over the sub-steps; depth-type
             keys (return_flow, transpiration) are summed; all other keys
             reflect the state at the end of the full timestep.
         """
@@ -341,36 +343,43 @@ class SoilGrid_2Dflow(object):
         # implicit solution for spinup, crank-nicholson afterwards
         self.implic = 1.0 if self.tmstep <= self.spinup_steps else 0.5
 
-        # start at the chunk size that worked last timestep (doubled), capped at dt,
+        # start at the sub-step size that worked last timestep (doubled), capped at dt,
         # instead of always retrying (and re-failing) the full dt from scratch
-        chunk_dt = min(dt, getattr(self, '_trial_dt', dt))
+        substep_dt = min(dt, getattr(self, '_trial_dt', dt))
 
         combined = None
         t_elapsed = 0.0
         overall_min_dt = dt  # smallest sub-step used anywhere this timestep, for logging only
-        n_chunks = 0
         while dt - t_elapsed > 1e-9:
-            this_chunk = min(chunk_dt, dt - t_elapsed)
-            chunk_RR = RR * (this_chunk / dt)
-            chunk_TR = TR * (this_chunk / dt)
+            this_substep = min(substep_dt, dt - t_elapsed)
+            substep_RR = RR * (this_substep / dt)
+            substep_TR = TR * (this_substep / dt)
 
-            self._min_substep_dt = this_chunk  # set by _adaptive_solve to the size that actually worked
-            chunk_result = self._adaptive_solve(this_chunk, chunk_RR, chunk_TR, crit)
-            n_chunks += 1
+            self._min_substep_dt = this_substep  # set by _adaptive_solve to the size that actually worked
+            substep_result = self._adaptive_solve(this_substep, substep_RR, substep_TR, crit)
 
             overall_min_dt = min(overall_min_dt, self._min_substep_dt)
-            w_prev = t_elapsed / (t_elapsed + this_chunk)
-            w_new = this_chunk / (t_elapsed + this_chunk)
-            combined = chunk_result if combined is None else self._merge_weighted(combined, chunk_result, w_prev, w_new)
-            t_elapsed += this_chunk
+            w_prev = t_elapsed / (t_elapsed + this_substep)
+            w_new = this_substep / (t_elapsed + this_substep)
+            combined = substep_result if combined is None else self._merge_weighted(combined, substep_result, w_prev, w_new)
+            t_elapsed += this_substep
 
-            # grow after an easy chunk, shrink to whatever size actually worked after a hard one
-            chunk_dt = min(dt, 2.0 * self._min_substep_dt)
+            # grow after an easy sub-step, shrink to whatever size actually worked after a hard one
+            substep_dt = min(dt, 2.0 * self._min_substep_dt)
 
-        self._trial_dt = chunk_dt  # seeds the first chunk of the next timestep
+        self._trial_dt = substep_dt  # seeds the first sub-step of the next timestep
+
+        # self.qr is set inside _solve_step, once per sub-step, so after a
+        # multi-sub-step day it only holds the LAST sub-step's return flow -
+        # spafhy.py reads this raw attribute (not the returned dict) as QR to
+        # feed BucketGrid/BucketOLFGrid's retflow next timestep, so resync it
+        # to the correctly-summed full-timestep total to avoid silently
+        # dropping the earlier sub-steps' return flow from the water balance
+        self.qr = combined['return_flow'] * 1e-3
+
         if overall_min_dt < dt:
             print(f'  Timestep {self.tmstep}: dt={dt:.5f} d required sub-stepping down to '
-                  f'{overall_min_dt:.5f} d ({n_chunks} chunk(s))')
+                  f'{overall_min_dt:.5f} d')
         return combined
 
     # rate-type outputs [mm d-1]: time-weighted average across sub-steps
@@ -410,10 +419,14 @@ class SoilGrid_2Dflow(object):
         snapshot = self._snapshot_state()
         converged, results = self._solve_step(dt_sub, RR_sub, TR_sub, crit)
 
-        if converged or depth >= self.max_substep_halvings:
+        depth_exhausted = depth >= self.max_substep_halvings
+        floor_reached = dt_sub <= self.min_substep_dt
+        if converged or depth_exhausted or floor_reached:
             if not converged:
+                reason = (f'reached the {self.min_substep_dt:.5f} d minimum sub-step'
+                          if floor_reached else f'after {self.max_substep_halvings} halvings')
                 print(f'  WARNING: sub-step dt={dt_sub:.5f} d (depth {depth}) did not converge '
-                      f'after {self.max_substep_halvings} halvings; accepting last iterate')
+                      f'{reason}; accepting last iterate')
                 n_cells, deep_id_counts = self._last_non_conv_summary
                 print(f'  Non-converged cells: {n_cells}')
                 if deep_id_counts is not None:
@@ -1004,6 +1017,8 @@ def connectivity_scalar(gwl):
     water table depth. When the water table is near the surface the system
     is fully connected; when deep it is nearly isolated.
 
+    Currently not used.
+
     Piecewise function:
         gwl >= -0.3 m :              scalar = 1.0   (fully connected)
         -0.5 m < gwl < -0.3 m :     scalar = linear interpolation 1e-3 → 1.0
@@ -1041,6 +1056,8 @@ def connectivity_scalar_exp(gwl, gwl_high=-0.5, s_ref=1e-7, gwl_ref=-5.0):
         gwl >= gwl_high :  scalar = 1.0
         gwl <  gwl_high :  scalar = exp(k * (gwl - gwl_high))
                         where k = ln(s_ref) / (gwl_ref - gwl_high)
+
+    Currently not used.
 
     Args:
         gwl      (float or array): groundwater level [m], <= 0

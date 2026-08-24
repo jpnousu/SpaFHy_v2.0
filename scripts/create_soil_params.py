@@ -27,7 +27,7 @@ sys.path.insert(0, str(scripts_folder))
 from soil_helpers import (
     discretized_depths, round_sig, expand_pf_layers,
     deep_properties_function_text, org_properties_function_text, root_properties_function_text,
-    wrc,
+    wrc, plot_ksat_profiles,
 )
 
 # Unit conversion: alpha [kPa-1] → alpha [cm-1]
@@ -36,27 +36,27 @@ kPa_to_cm = 1.0 / (100.0 / 9.81)   # = 0.09810
 # ── Default parameters (override via function arguments during calibration) ────
 
 _DEFAULT_KMAX = {
-    'Bedrock':  1e-6,
-    'Peat':     1e-4,
-    'Fine':     5e-6,
-    'Medium':   5e-4,
-    'Coarse':   5e-4,
+    'Bedrock':  1e-5,
+    'Peat':     1e-3,
+    'Fine':     1e-5,
+    'Medium':   1e-2,
+    'Coarse':   1e-3,
 }
 
 _DEFAULT_F = {                  # Ksat decay coefficient [m-1]
-    'Bedrock':  3.0,
-    'Peat':     3.0,
-    'Fine':     2.0,
-    'Medium':   6.0,
-    'Coarse':   4.0,
+    'Bedrock':  15.0,
+    'Peat':     6.0,
+    'Fine':     6.0,
+    'Medium':   20.0,
+    'Coarse':   3.0,
 }
 
 _KMIN = {
-    'Bedrock':  1e-7,
-    'Peat':     1e-7,
-    'Fine':     1e-7,
-    'Medium':   1e-6,
-    'Coarse':   1e-6,
+    'Bedrock':  1e-9,
+    'Peat':     1e-9,
+    'Fine':     1e-9,
+    'Medium':   1e-9,
+    'Coarse':   1e-9,
 }
 
 _MAX_DEPTH = {
@@ -68,11 +68,11 @@ _MAX_DEPTH = {
 }
 
 _CONST_SURF_KMAX = {             # depth [m] over which Ksat is held constant at Kmax before exponential decay
-    'Bedrock':  0.0,
-    'Peat':     0.0,
-    'Fine':     0.0,
+    'Bedrock':  0.1,
+    'Peat':     0.2,
+    'Fine':     0.3,
     'Medium':   0.3,
-    'Coarse':   0.0,
+    'Coarse':   0.3,
 }
 
 # van Genuchten / ThetaS – Sources:
@@ -139,6 +139,8 @@ def create_soil_params(
     max_depth_values=None,
     write=True,
     verbose=True,
+    plot=True,
+    fig_dir=None,
 ):
     """
     Build and optionally write soil_params.py.
@@ -164,6 +166,10 @@ def create_soil_params(
         If True (default), write soil_params.py to SpaFHy_v2.0/.
     verbose : bool
         If True (default), print the fc/wp table and the output path.
+    plot : bool
+        If True (default), plot the exponential Ksat(z) profile for each soil type.
+    fig_dir : str or Path, optional
+        Directory to save the Ksat profile plot. Defaults to SpaFHy_v2.0/figs/.
 
     Returns
     -------
@@ -232,6 +238,15 @@ def create_soil_params(
             'f_theta':          _F_THETA[soil_type],
             'const_surf_depth': const_surf_depth[soil_type],
         }
+
+    # ── Plot Ksat(z) profiles ──────────────────────────────────────────────────
+    if plot:
+        fig_dir = Path(fig_dir) if fig_dir else project_root / 'figs'
+        fig_dir.mkdir(parents=True, exist_ok=True)
+        out_path = fig_dir / 'deep_soil_exponential_profiles.png'
+        plot_ksat_profiles(exp_params, out_path=out_path)
+        if verbose:
+            print(f'Ksat profile plot → {out_path}')
 
     # ── Discretize deep_properties_exp ────────────────────────────────────────
     deep_properties_exp = {}

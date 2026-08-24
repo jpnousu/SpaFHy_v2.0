@@ -11,7 +11,8 @@ def read_runoff(catchment_no, discharge_folder):
     Read Krycklan discharge data for a given catchment number.
     Returns daily runoff in mm/d as a DataFrame with DatetimeIndex.
     """
-    pattern = os.path.join(discharge_folder, f'SITES_WB-SL-Q_SVB-VAB-C{catchment_no}_*.csv')
+    # site-code segment between 'SVB' and '-C{catchment_no}' varies (e.g. '-VAB-C1', '_RIS-C1')
+    pattern = os.path.join(discharge_folder, f'SITES_WB-SL-Q_SVB*-C{catchment_no}_*.csv')
     files = glob.glob(pattern)
     if not files:
         raise FileNotFoundError(f'No discharge file found for catchment {catchment_no} in {discharge_folder}')

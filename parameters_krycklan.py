@@ -8,7 +8,7 @@ import pathlib
 import time
 from datetime import datetime
 
-reso = 20
+reso = 40
 streams = 'channels'
 #streams = '5haStreams'
 
@@ -47,10 +47,10 @@ def parameters(folder='', soil_params=None):
 
     pgen = {'description': 'final_run',  # description written in result file
             'simtype': '2D', # 1D, TOP, 2D,
-            'start_date': '2014-10-01', # 2013-01-01 full run
-            'end_date': '2015-10-01', # 2018-12-31 full run
+            'start_date': '2013-01-01', # 2013-01-01 full run
+            'end_date': '2018-12-31', # 2018-12-31 full run
             #'spinup_file': r'F:\SpaFHy_2D_2021/testcase_input_202304051037_spinup.nc',
-            'spinup_end': '2015-04-01',  # 2014-09-01 full run
+            'spinup_end': '2014-09-01',  # 2014-09-01 full run
             'dt': 86400.0,
             'spatial_cpy': True,  # if False uses parameters from cpy['state']
             # else needs cf.dat, hc.dat, LAI_decid.dat, LAI_spruce.dat, LAI_pine.dat, (cmask.dat)
@@ -75,7 +75,7 @@ def parameters(folder='', soil_params=None):
             'cmask' : 'catchment_mask.asc',
             'mask': None, # 'cmask/streams', 'cmask', 'streams', None
             #'results_folder': r'/scratch/project_2000908/nousu/SpaFHy_RESULTS',
-            'results_folder': str(pathlib.Path(folder+f'/results/calibration_7b_2026/{streams}_{reso}m')),
+            'results_folder': str(pathlib.Path(folder+f'/results/run_8_2026/{streams}_{reso}m')),
             'save_interval': 366, # interval for writing results to file (decreases need for memory during computation)
             'variables':[ # list of output variables (rows can be commented away if not all variables are of interest)
                     #['parameters_lai_conif', 'leaf area index of conifers [m2 m-2]'],
@@ -146,7 +146,7 @@ def parameters(folder='', soil_params=None):
                     #['canopy_leaf_area_index', 'canopy leaf area index [m2 m-2]'],
                     #['canopy_degree_day_sum', 'sum of degree days [degC]'],
                     #['canopy_fLAI', 'state of LAI'],
-                    #['canopy_water_storage', 'canopy intercepted water storage [mm d-1]'],
+                    ['canopy_water_storage', 'canopy intercepted water storage [mm d-1]'],
                     #['canopy_snowfall', 'canopy snowfall'],
                     ['top_baseflow', 'topmodel baseflow [mm d-1]'],
                     ['top_water_closure', 'topmodel water balance error [mm d-1]'],
@@ -257,7 +257,7 @@ def parameters(folder='', soil_params=None):
             'org_poros': 0.448, # porosity (-)
             'org_fc': 0.33, # field capacity (-)
             'org_rw': 0.15, # critical vol. moisture content (-) for decreasing phase in Ef
-            'org_ksat': 1E-04, # root zone hydraulic conductivity
+            'org_ksat': 1E-04, # org zone hydraulic conductivity
             'org_beta': 6.0, # 
             'maxpond': 0.0, # max ponding depth (m)
             # rootzone layer
