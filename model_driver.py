@@ -371,6 +371,12 @@ def preprocess_parameters(pgen, catchment, folder='', psoil=None):
         dsdata['rew_gwl_wp'] = pgen.get('rew_gwl_wp', -150.1)
         # interface transmissivity averaging: 'harmonic' (default) or 'geometric'
         dsdata['transmissivity_mean'] = pgen.get('transmissivity_mean', 'harmonic')
+        # adaptive sub-stepping / Picard iteration tuning (defaults match soilprofile2D.py,
+        # exposed here so they can be tuned per-catchment/resolution without code edits)
+        dsdata['max_substep_halvings'] = pgen.get('max_substep_halvings', 6)
+        dsdata['min_substep_dt'] = pgen.get('min_substep_dt', 0.01171875)
+        dsdata['early_exit_iter'] = pgen.get('early_exit_iter', 10)
+        dsdata['maxiter'] = pgen.get('maxiter', 50)
     else:
         dsdata = pspd.copy() # dummy
         

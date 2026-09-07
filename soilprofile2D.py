@@ -153,6 +153,16 @@ class SoilGrid_2Dflow(object):
         #print('spara[deep_z]', spara['deep_z'])
         self.deep_z = spara['deep_z']*-1
 
+        # physical floor for H (gwl cannot go below the impermeable bottom,
+        # self.deep_z); precomputed once since self.ele/self.deep_z are static.
+        # deep_z is NaN outside the catchment mask like deep_id, so the floor
+        # there must NOT be NaN (np.maximum(x, nan) == nan, which would corrupt
+        # the finite -999 outside-catchment sentinel set below) - such cells
+        # get -inf instead, i.e. no effective floor, leaving them untouched.
+        _h_floor_2d = self.ele + self.deep_z
+        self._H_floor_2d = np.where(np.isfinite(_h_floor_2d), _h_floor_2d, -np.inf)
+        self._H_floor = np.ravel(self._H_floor_2d)
+
         # replace nans (values outside catchment area)
         self.H[np.isnan(self.H)] = -999
 
@@ -245,9 +255,12 @@ class SoilGrid_2Dflow(object):
         # max_substep_halvings, so consecutive hard timesteps (each starting from
         # the previous day's already-shrunk trial size) can't ratchet down forever
         self.min_substep_dt = spara.get('min_substep_dt', 0.01171875)  # 16.875 min
-        # bail out of the solution loop and let _adaptive_solve
-        # halve dt instead of going until maxiter
+        # bail out of the solution loop and let _adaptive_solve halve dt instead
+        # of going until maxiter - but only while halving is still possible; once
+        # _adaptive_solve can no longer halve (depth/floor limit reached), the full
+        # maxiter budget is used instead since there's no cheaper alternative left
         self.early_exit_iter = spara.get('early_exit_iter', 10)
+        self.maxiter = spara.get('maxiter', 50)
         #self.totit = 0
 
     def _eval_rootmoist_at_gwl(self, gwl_value):
@@ -415,18 +428,27 @@ class SoilGrid_2Dflow(object):
         """
         Solves one sub-interval of length dt_sub; on non-convergence, rolls back
         state and retries as two half-length sub-steps (recursively).
+
+        While further halving is still possible, _solve_step bails out after
+        only self.early_exit_iter Picard iterations - cheaper to retry as a
+        smaller, less stiff sub-step than to grind through more iterations.
+        Once halving is no longer possible (depth or floor limit reached),
+        there's no cheaper alternative left, so _solve_step is allowed to
+        iterate all the way to self.maxiter instead of bailing out early.
         """
         snapshot = self._snapshot_state()
-        converged, results = self._solve_step(dt_sub, RR_sub, TR_sub, crit)
-
         depth_exhausted = depth >= self.max_substep_halvings
         floor_reached = dt_sub <= self.min_substep_dt
-        if converged or depth_exhausted or floor_reached:
+        at_floor = depth_exhausted or floor_reached
+        iter_budget = self.maxiter if at_floor else self.early_exit_iter
+        converged, results = self._solve_step(dt_sub, RR_sub, TR_sub, crit, iter_budget)
+
+        if converged or at_floor:
             if not converged:
                 reason = (f'reached the {self.min_substep_dt:.5f} d minimum sub-step'
                           if floor_reached else f'after {self.max_substep_halvings} halvings')
                 print(f'  WARNING: sub-step dt={dt_sub:.5f} d (depth {depth}) did not converge '
-                      f'{reason}; accepting last iterate')
+                      f'{reason} within {iter_budget} iterations; accepting last iterate')
                 n_cells, deep_id_counts = self._last_non_conv_summary
                 print(f'  Non-converged cells: {n_cells}')
                 if deep_id_counts is not None:
@@ -443,7 +465,7 @@ class SoilGrid_2Dflow(object):
         second = self._adaptive_solve(half_dt, half_RR, half_TR, crit, depth + 1)
         return self._merge_weighted(first, second, 0.5, 0.5)
 
-    def _solve_step(self, dt, RR, TR, crit):
+    def _solve_step(self, dt, RR, TR, crit, max_iter):
         """
         Attempts to advance the 2D groundwater flow model by dt (single Picard/
         Crank-Nicolson attempt, no sub-stepping). Transmissivity is updated
@@ -456,11 +478,15 @@ class SoilGrid_2Dflow(object):
             [m2 d-1] in gwl_Wsto / gwl_Wsto_vectorized.
 
         Args:
-            dt   (float): Timestep (or sub-step) duration [days].
-            RR   (array): Drainage input from BucketGrid to the saturated zone [m].
-            TR   (array): Transpiration sink taken directly from the soil water
+            dt       (float): Timestep (or sub-step) duration [days].
+            RR       (array): Drainage input from BucketGrid to the saturated zone [m].
+            TR       (array): Transpiration sink taken directly from the soil water
                 storage [m]. Capped so storage cannot be drawn below zero.
-            crit (float): Convergence criterion [m] for the Picard iteration.
+            crit     (float): Convergence criterion [m] for the Picard iteration.
+            max_iter   (int): Iteration count at which to give up (converged=False)
+                if not yet converged; set by _adaptive_solve to self.early_exit_iter
+                while halving is still possible, self.maxiter once it isn't. The
+                loop itself never runs past self.maxiter regardless of max_iter.
 
         Returns:
             (converged, results):
@@ -490,6 +516,13 @@ class SoilGrid_2Dflow(object):
         # transpiration cannot draw storage below zero (Rew already limits demand upstream in CanopyGrid)
         TR = np.minimum(TR, np.maximum(self.Wsto_deep, 0.0))
         self.tr_deep = TR
+
+        # physical floor: gwl cannot go below the profile's impermeable bottom
+        # (self.deep_z, a negative depth) - applied here (before self.H is used
+        # anywhere below) so a state that already drifted past it on a previous
+        # timestep can't keep feeding the interp1d extrapolation region that
+        # drives a self-sustaining Picard oscillation
+        self.H = np.maximum(self.H, self._H_floor_2d)
 
         # for computing mass balance later, RR: drainage from bucketgrid; TR: transpiration sink
         S = RR - TR
@@ -563,9 +596,19 @@ class SoilGrid_2Dflow(object):
 
         H_neighbours_2d = np.reshape(H_neighbours,(self.rows,self.cols))
 
-        # Transmissivity: for active BC nodes use mean H of neighbours, not the (possibly deep) BC level
-        H_for_Tr = np.where((bc_h_2d < -eps) & (H_neighbours_2d > self.ele + bc_h_2d),
-                            H_neighbours_2d, self.H)
+        # Transmissivity: under Dirichlet, ditch+lake cells share bc_h_2d and use
+        # mean H of active neighbours (no separate mean-of-Tr mechanism exists
+        # there, unlike Cauchy's ditch/lake treatment below), instead of the
+        # (possibly deep) BC level which would restrict transmissivity too much.
+        # Under Cauchy, bc_h_2d is lake_h only - lakes get the mean-of-neighbours'
+        # own Tr treatment below instead, since substituting a neighbour's HEAD
+        # here could land the lake's Tr(gwl) lookup in a neighbour-specific
+        # extreme near-surface Ksat zone that has nothing to do with the lake.
+        if self.ditch_boundary == 'Dirichlet':
+            H_for_Tr = np.where((bc_h_2d < -eps) & (H_neighbours_2d > self.ele + bc_h_2d),
+                                H_neighbours_2d, self.H)
+        else:
+            H_for_Tr = self.H
 
         # transmissivities based on gwl
         if not self.z_from_gis:
@@ -576,6 +619,25 @@ class SoilGrid_2Dflow(object):
                 for j in range(self.gwl_to_Tr.shape[1]):
                     if np.isfinite(self.cmask[i,j]):
                         self.Tr0[i,j] = self.gwl_to_Tr[i,j](H_for_Tr[i,j] - self.ele[i,j])
+
+        # For Cauchy lake cells: set Tr to mean of aquifer neighbours (run before
+        # the ditch block below, so a ditch cell adjacent to a lake sees the
+        # lake's already-corrected Tr rather than a stale/extreme value)
+        if self.ditch_boundary == 'Cauchy':
+            for i in range(self.rows):
+                for j in range(self.cols):
+                    if self.lake_h[i,j] < -eps:
+                        nbr = []
+                        if i > 0 and self.lake_h[i-1,j] > -eps and np.isfinite(self.cmask[i-1,j]):
+                            nbr.append(self.Tr0[i-1,j])
+                        if i < self.rows-1 and self.lake_h[i+1,j] > -eps and np.isfinite(self.cmask[i+1,j]):
+                            nbr.append(self.Tr0[i+1,j])
+                        if j > 0 and self.lake_h[i,j-1] > -eps and np.isfinite(self.cmask[i,j-1]):
+                            nbr.append(self.Tr0[i,j-1])
+                        if j < self.cols-1 and self.lake_h[i,j+1] > -eps and np.isfinite(self.cmask[i,j+1]):
+                            nbr.append(self.Tr0[i,j+1])
+                        if nbr:
+                            self.Tr0[i,j] = np.mean(nbr)
 
         # For Cauchy ditch cells: set Tr to mean of aquifer neighbours
         if self.ditch_boundary == 'Cauchy':
@@ -622,8 +684,15 @@ class SoilGrid_2Dflow(object):
         TrS1 = TrS0.copy()
 
         # hydraulic heads, new iteration and old iteration
-        Htmp = self.H.copy()
-        Htmp1 = self.H.copy()
+        # physical floor: gwl cannot go below the profile's impermeable bottom
+        # (self.deep_z, a negative depth). Without this, a cell can numerically
+        # drift far outside the tabulated gwl_to_Tr/gwl_to_C range, where
+        # interp1d(fill_value='extrapolate') can behave wildly and drive a
+        # self-sustaining oscillation that no amount of sub-stepping/damping
+        # escapes (seen as gwl stuck at ~-24 m next to a -0.26 m ditch cell)
+        H_floor = self._H_floor  # raveled version used inside the loop below
+        Htmp = np.maximum(self.H.copy(), self._H_floor_2d)
+        Htmp1 = Htmp.copy()
 
         # crit and self.implic are set once per external timestep in run_timestep()
         # (constant across any internal sub-steps of the same timestep)
@@ -644,17 +713,19 @@ class SoilGrid_2Dflow(object):
                             Tr_ditch_2d[i, j] = self.gwl_to_Tr[i, j](self.ditch_h[i, j])
             Tr_ditch = np.ravel(Tr_ditch_2d)
 
-        maxiter = 100
         update_Tr_in_loop = True
         converged = False
 
-        for it in range(maxiter):
+        for it in range(self.maxiter):
             if update_Tr_in_loop:
                 # transmissivity [m2 d-1] to neighbouring cells with HTmp1
-                # for lake nodes that are active, transmissivity calculated based on mean H of
-                # neighboring nodes, not lake depth which would restrict transmissivity too much
-                H_for_Tr = np.where((bc_h_2d < -eps) & (H_neighbours_2d > self.ele + bc_h_2d),
-                                    H_neighbours_2d, Htmp)
+                # see the pre-loop Tr0 computation above for why lakes are
+                # excluded from the H_neighbours substitution under Cauchy
+                if self.ditch_boundary == 'Dirichlet':
+                    H_for_Tr = np.where((bc_h_2d < -eps) & (H_neighbours_2d > self.ele + bc_h_2d),
+                                        H_neighbours_2d, Htmp)
+                else:
+                    H_for_Tr = Htmp
                 # transmissivities based on gwl
                 if not self.z_from_gis:
                     for key, value in self.gwl_to_Tr.items():
@@ -664,6 +735,24 @@ class SoilGrid_2Dflow(object):
                         for j in range(self.gwl_to_Tr.shape[1]):
                             if np.isfinite(self.cmask[i,j]):
                                 self.Tr1[i,j] = self.gwl_to_Tr[i,j](H_for_Tr[i,j] - self.ele[i,j])
+
+                # For Cauchy lake cells: set Tr to mean of aquifer neighbours
+                # (run before the ditch block below, see pre-loop comment above)
+                if self.ditch_boundary == 'Cauchy':
+                    for i in range(self.rows):
+                        for j in range(self.cols):
+                            if self.lake_h[i,j] < -eps:
+                                nbr = []
+                                if i > 0 and self.lake_h[i-1,j] > -eps and np.isfinite(self.cmask[i-1,j]):
+                                    nbr.append(self.Tr1[i-1,j])
+                                if i < self.rows-1 and self.lake_h[i+1,j] > -eps and np.isfinite(self.cmask[i+1,j]):
+                                    nbr.append(self.Tr1[i+1,j])
+                                if j > 0 and self.lake_h[i,j-1] > -eps and np.isfinite(self.cmask[i,j-1]):
+                                    nbr.append(self.Tr1[i,j-1])
+                                if j < self.cols-1 and self.lake_h[i,j+1] > -eps and np.isfinite(self.cmask[i,j+1]):
+                                    nbr.append(self.Tr1[i,j+1])
+                                if nbr:
+                                    self.Tr1[i,j] = np.mean(nbr)
 
                 # For Cauchy ditch cells: set Tr to mean of aquifer neighbours
                 if self.ditch_boundary == 'Cauchy':
@@ -780,6 +869,9 @@ class SoilGrid_2Dflow(object):
             # Solve: A*Htmp1 = hs
             Htmp1 = linalg.spsolve(A,hs)
 
+            # keep the iterate within the tabulated gwl range (see H_floor above)
+            Htmp1 = np.maximum(Htmp1, H_floor)
+
             # Diagnose cells with large head change before clamping
             large_diff = np.abs(Htmp1 - Htmp) > 0.5
             if np.any(large_diff):
@@ -822,7 +914,7 @@ class SoilGrid_2Dflow(object):
             if conv1 < crit:
                 converged = True
                 break
-            if it + 1 >= self.early_exit_iter:
+            if it + 1 >= max_iter:
                 break  # bail out early (converged stays False); _adaptive_solve halves dt and retries
             # end of iteration loop
         if not converged:

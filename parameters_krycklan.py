@@ -8,9 +8,9 @@ import pathlib
 import time
 from datetime import datetime
 
-reso = 40
-streams = 'channels'
-#streams = '5haStreams'
+reso = 80
+#streams = 'channels'
+streams = '5haStreams'
 
 
 def _constant_properties(properties):
@@ -48,9 +48,9 @@ def parameters(folder='', soil_params=None):
     pgen = {'description': 'final_run',  # description written in result file
             'simtype': '2D', # 1D, TOP, 2D,
             'start_date': '2013-01-01', # 2013-01-01 full run
-            'end_date': '2018-12-31', # 2018-12-31 full run
+            'end_date': '2024-01-01', # 2018-12-31 full run
             #'spinup_file': r'F:\SpaFHy_2D_2021/testcase_input_202304051037_spinup.nc',
-            'spinup_end': '2014-09-01',  # 2014-09-01 full run
+            'spinup_end': '2014-08-31',  # 2014-09-01 full run
             'dt': 86400.0,
             'spatial_cpy': True,  # if False uses parameters from cpy['state']
             # else needs cf.dat, hc.dat, LAI_decid.dat, LAI_spruce.dat, LAI_pine.dat, (cmask.dat)
@@ -63,6 +63,12 @@ def parameters(folder='', soil_params=None):
                                         # SoilGrid_2Dflow instead. Requires simtype == '2D'.
             'ditch_boundary': 'Cauchy',  # ditch boundary condition: 'Cauchy' (flux) or 'Dirichlet' (constant head)
             'transmissivity_mean': 'harmonic', # interface transmissivity averaging: 'harmonic' or 'geometric'
+            # SoilGrid_2Dflow adaptive sub-stepping / Picard iteration tuning (defaults
+            # match soilprofile2D.py; tune per-catchment/resolution if convergence warnings appear)
+            'max_substep_halvings': 6,  # max sub-step halvings before accepting a non-converged result
+            'min_substep_dt': 0.01171875,  # absolute floor on sub-step size [d] (16.875 min)
+            'early_exit_iter': 10,  # Picard iterations before bailing to try a smaller sub-step
+            'maxiter': 100,  # Picard iterations allowed once no smaller sub-step is possible
             'topmodel': True,
             # else needs soil_id.dat, stream_depth.dat
             'spatial_forcing': False,  # if False uses forcing from forcing file with pgen['forcing_id'] and cpy['loc']
@@ -75,7 +81,7 @@ def parameters(folder='', soil_params=None):
             'cmask' : 'catchment_mask.asc',
             'mask': None, # 'cmask/streams', 'cmask', 'streams', None
             #'results_folder': r'/scratch/project_2000908/nousu/SpaFHy_RESULTS',
-            'results_folder': str(pathlib.Path(folder+f'/results/run_8_2026/{streams}_{reso}m')),
+            'results_folder': str(pathlib.Path(folder+f'/results/run_8b_2026/{streams}_{reso}m')),
             'save_interval': 366, # interval for writing results to file (decreases need for memory during computation)
             'variables':[ # list of output variables (rows can be commented away if not all variables are of interest)
                     #['parameters_lai_conif', 'leaf area index of conifers [m2 m-2]'],
