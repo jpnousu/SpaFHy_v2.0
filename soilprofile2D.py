@@ -626,7 +626,7 @@ class SoilGrid_2Dflow(object):
         if self.ditch_boundary == 'Cauchy':
             for i in range(self.rows):
                 for j in range(self.cols):
-                    if self.lake_h[i,j] < -eps:
+                    if self.lake_h[i,j] < -eps and np.isfinite(self.cmask[i,j]):
                         nbr = []
                         if i > 0 and self.lake_h[i-1,j] > -eps and np.isfinite(self.cmask[i-1,j]):
                             nbr.append(self.Tr0[i-1,j])
@@ -643,7 +643,7 @@ class SoilGrid_2Dflow(object):
         if self.ditch_boundary == 'Cauchy':
             for i in range(self.rows):
                 for j in range(self.cols):
-                    if self.ditch_h[i,j] < -eps:
+                    if self.ditch_h[i,j] < -eps and np.isfinite(self.cmask[i,j]):
                         nbr = []
                         if i > 0 and self.ditch_h[i-1,j] > -eps and np.isfinite(self.cmask[i-1,j]):
                             nbr.append(self.Tr0[i-1,j])
@@ -741,7 +741,7 @@ class SoilGrid_2Dflow(object):
                 if self.ditch_boundary == 'Cauchy':
                     for i in range(self.rows):
                         for j in range(self.cols):
-                            if self.lake_h[i,j] < -eps:
+                            if self.lake_h[i,j] < -eps and np.isfinite(self.cmask[i,j]):
                                 nbr = []
                                 if i > 0 and self.lake_h[i-1,j] > -eps and np.isfinite(self.cmask[i-1,j]):
                                     nbr.append(self.Tr1[i-1,j])
@@ -758,7 +758,7 @@ class SoilGrid_2Dflow(object):
                 if self.ditch_boundary == 'Cauchy':
                     for i in range(self.rows):
                         for j in range(self.cols):
-                            if self.ditch_h[i,j] < -eps:
+                            if self.ditch_h[i,j] < -eps and np.isfinite(self.cmask[i,j]):
                                 nbr = []
                                 if i > 0 and self.ditch_h[i-1,j] > -eps and np.isfinite(self.cmask[i-1,j]):
                                     nbr.append(self.Tr1[i-1,j])
@@ -907,7 +907,7 @@ class SoilGrid_2Dflow(object):
 
             # print to get sense what's happening when problems in convergence
             if it > 90:
-                print('\t', 'iterations:', it, ' con1:', conv1, 
+                print('\t', 'iterations:', it, ' con1:', conv1,
                       ' max_index:', max_index, ' self.ditch_h[max_index]', self.ditch_h[max_index],
                       ' H[max_index]', Htmp[max_index]-self.ele[max_index])
 

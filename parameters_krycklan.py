@@ -8,9 +8,9 @@ import pathlib
 import time
 from datetime import datetime
 
-reso = 80
-#streams = 'channels'
-streams = '5haStreams'
+reso = 20
+streams = 'channels'
+#streams = '5haStreams'
 
 
 def _constant_properties(properties):
