@@ -22,21 +22,38 @@ import warnings
 warnings.filterwarnings("ignore")
 eps = np.finfo(float).eps
 
+
+def _resolve_worker_count(n_catchments):
+    requested_workers = os.environ.get('SPAFHY_N_WORKERS')
+    if requested_workers is None:
+        requested_workers = os.environ.get('SLURM_CPUS_PER_TASK')
+
+    if requested_workers is None:
+        worker_count = cpu_count()
+    else:
+        try:
+            worker_count = int(requested_workers)
+        except ValueError:
+            worker_count = cpu_count()
+
+    return max(1, min(worker_count, n_catchments))
+
 def worker(catch, catchment, create_ncf, create_spinup, output, folder):
     print(f'*** Catchment no.: {catch} ***')
     outputfile = driver(catchment, catch, create_ncf=create_ncf, create_spinup=create_spinup, output=output, folder=folder)
     return outputfile
 
 def parallel_driver(catchment, catchment_no, create_ncf=False, create_spinup=False, output=True, folder=''):
-    # Create a Pool with the desired number of processes
-    if not isinstance(catchment_no, np.ndarray):
-        catchment_no = np.array([catchment_no])
-    size_setpool = min(cpu_count(), len(catchment_no))
+    catchment_no = np.atleast_1d(catchment_no)
+    size_setpool = _resolve_worker_count(len(catchment_no))
 
-    with Pool(processes=size_setpool) as pool:
-        # Prepare arguments for each catchment
-        args = [(catch, catchment, create_ncf, create_spinup, output, folder) for catch in catchment_no]
-        outputfile = pool.starmap(worker, args)
+    if size_setpool == 1:
+        outputfile = [worker(catch, catchment, create_ncf, create_spinup, output, folder) for catch in catchment_no]
+    else:
+        with Pool(processes=size_setpool) as pool:
+            # Prepare arguments for each catchment
+            args = [(catch, catchment, create_ncf, create_spinup, output, folder) for catch in catchment_no]
+            outputfile = pool.starmap(worker, args)
 
     print('**** FINISHED ALL RUNS ****')
 
