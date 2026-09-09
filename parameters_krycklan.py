@@ -5,12 +5,19 @@ PARAMETERS
 """
 
 import pathlib
+import os
 import time
 from datetime import datetime
 
 reso = 20
 streams = 'channels'
 #streams = '5haStreams'
+results_run = os.getenv('SPAFHY_RESULTS_RUN', 'run_9_2026')
+
+
+def _resolve_results_folder():
+    results_root = pathlib.Path(os.getenv('SPAFHY_RESULTS_FOLDER', '/Users/jpnousu/Data/SpaFHy_RESULTS'))
+    return results_root / 'krycklan' / results_run / f'{streams}_{reso}m'
 
 
 def _constant_properties(properties):
@@ -81,7 +88,7 @@ def parameters(folder='', soil_params=None):
             'cmask' : 'catchment_mask.asc',
             'mask': None, # 'cmask/streams', 'cmask', 'streams', None
             #'results_folder': r'/scratch/project_2000908/nousu/SpaFHy_RESULTS',
-            'results_folder': str(pathlib.Path(folder+f'/results/run_8b_2026/{streams}_{reso}m')),
+            'results_folder': str(_resolve_results_folder()),
             'save_interval': 366, # interval for writing results to file (decreases need for memory during computation)
             'variables':[ # list of output variables (rows can be commented away if not all variables are of interest)
                     #['parameters_lai_conif', 'leaf area index of conifers [m2 m-2]'],
