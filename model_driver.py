@@ -394,6 +394,7 @@ def preprocess_parameters(pgen, catchment, folder='', psoil=None):
         dsdata['min_substep_dt'] = pgen.get('min_substep_dt', 0.01171875)
         dsdata['early_exit_iter'] = pgen.get('early_exit_iter', 10)
         dsdata['maxiter'] = pgen.get('maxiter', 50)
+        dsdata['picard_relax'] = pgen.get('picard_relax', 1.0)
     else:
         dsdata = pspd.copy() # dummy
         

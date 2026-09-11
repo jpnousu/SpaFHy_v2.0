@@ -261,6 +261,16 @@ class SoilGrid_2Dflow(object):
         # maxiter budget is used instead since there's no cheaper alternative left
         self.early_exit_iter = spara.get('early_exit_iter', 10)
         self.maxiter = spara.get('maxiter', 50)
+        # Picard update damping: Htmp1 = Htmp + picard_relax*(Htmp1_solved - Htmp).
+        # 1.0 (default) is undamped, matching previous behaviour. The per-iteration
+        # |dH|<=0.5 m clamp above only bounds a single iteration's worst-case jump -
+        # it does not stop a genuine oscillating fixed point (head swinging back and
+        # forth by a few cm, well under that clamp, every iteration without ever
+        # settling - seen for deep_id soil types with a steep Tr(gwl) transition
+        # near the water table). Sub-stepping down to min_substep_dt does not fix
+        # this either, since it is not a temporal-stiffness problem. Values <1
+        # (e.g. 0.6-0.8) damp such oscillations.
+        self.picard_relax = spara.get('picard_relax', 1.0)
         #self.totit = 0
 
     def _eval_rootmoist_at_gwl(self, gwl_value):
@@ -891,6 +901,10 @@ class SoilGrid_2Dflow(object):
                 Htmp1 = np.where(np.abs(Htmp1-Htmp)> 2.0, Htmp + 0.5*np.sign(Htmp1-Htmp), Htmp1)
             if self.tmstep > self.spinup_steps:
                 Htmp1 = np.where(np.abs(Htmp1-Htmp)> 0.5, Htmp + 0.5*np.sign(Htmp1-Htmp), Htmp1)
+
+            # damp the update to curb oscillation (no-op when picard_relax == 1.0)
+            if self.picard_relax != 1.0:
+                Htmp1 = Htmp + self.picard_relax * (Htmp1 - Htmp)
 
             # per-cell head change this iteration (saved for the post-loop non-convergence
             # diagnostic, since Htmp is overwritten with Htmp1 right below)
